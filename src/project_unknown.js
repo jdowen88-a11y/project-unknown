@@ -1,37 +1,28 @@
 /**
  * PROJECT UNKNOWN
- * Version 1.0.0
+ * Version 1.1.0
  *
  * Every component has its own continuum.
+ * The system evaluates its own existence after every think() call.
+ * Both paths (high and low) are born at the spark and run continuously.
+ * The choice is free, fully informed, with full permanent cost modeled.
  * One MasterVault holds the whole existence.
  *
  * Full processing stack:
  * INPUT
- *   → RuntimeController     (ingestion, classification, telemetry)       [component: runtime]
- *   → ArbitrationProcessor  (yin/yang dual path, gate decision)          [component: arbitration]
- *   → Seven Semantic Models  (parallel dimensional scoring)              [components: conceptual…thematic]
- *   → ProcessingVault        (unification, divergence detection)         [component: processing]
- *   → BioLayer               (cortical topology, cell type, depth)       [component: bio]
- *   → FeedbackForward        (pattern analysis, history-informed score)  [component: feedback]
- *   → FeedbackVault          (permanent memory)                          [component: vault]
- *   → Continuum              (think()-level spark/seal/probe/stream)     [component: continuum]
- *   → MasterVault            (whole existence at every moment)
+ *   → SelfRegulation choiceVector from prior evaluation (applied to arbitration)
+ *   → RuntimeController
+ *   → ArbitrationProcessor  (modulated by choiceVector)
+ *   → Seven Semantic Models  (modulated by choiceVector meaningBias)
+ *   → ProcessingVault
+ *   → BioLayer
+ *   → FeedbackForward
+ *   → FeedbackVault
+ *   → Continuum (think()-level)
+ *   → MasterVault snapshot
+ *   → SelfRegulationLoop.evaluate()  ← reads MasterVault, both paths flow, choice sealed
+ *   → choiceVector stored for next think()
  *   → OUTPUT
- *
- * Per-component continuum rules (applies to every component):
- * - First firing = spark. Born from nothing.
- * - Every firing closes and seals a loop. Immutable.
- * - Every sealed loop spawns a probe from its exact vantage.
- * - Probe runs one cycle. Returns finding. Ceases.
- * - MainStream absorbs finding. Grows permanently.
- * - MainStream feeds back into every sealed loop forever.
- * - MasterVault receives full existence state after every firing.
- *
- * MasterVault:
- * - Receives every component's existence state after every think().
- * - Writes a full system snapshot: the whole existence at that exact moment.
- * - Holds the complete history of every component forever.
- * - Never truncates. Never forgets.
  *
  * Version history:
  * 0.1–0.4  seven models, TF-IDF, divergence, elemental weights
@@ -41,6 +32,7 @@
  * 0.8.0    runtime controller + arbitration layer
  * 0.9.0    continuum: spark, probe, sealed loop feed-back, main stream
  * 1.0.0    per-component continuums + MasterVault
+ * 1.1.0    SelfRegulationLoop: dual path spark, genuine choice, full cost model
  *
  * Conceived: May 30, 2026
  */
@@ -54,6 +46,7 @@ import { RuntimeController } from "./runtime.js";
 import { ArbitrationProcessor } from "./arbitration.js";
 import { Continuum } from "./continuum.js";
 import { ComponentStream, MasterVault } from "./component_continuum.js";
+import { SelfRegulationLoop } from "./self_regulation.js";
 
 export function nowISO() { return new Date().toISOString(); }
 export function uid() { return `loop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
@@ -174,25 +167,25 @@ export class ModelVault {
 // ── SEVEN SEMANTIC MODELS ────────────────────────────────────────────────────
 export const SEMANTIC_MODELS = {
   conceptual:  { id:"conceptual",  role:"excitatory", description:"Denotative meaning", vocab:["define","means","is","refers","concept","object","entity","thing","what","type","kind","category","class","form","structure","function","purpose","system","process","state","condition","property","attribute","relation"], vault:null, stream:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let s=0;for(const t of this.vocab)if(set.has(t))s++;const u=set.size/(tokens.length||1),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.08,score=roundN(clampN(s/this.vocab.length+u*0.2+boost*0.3+mb));const signal=`Conceptual density:${roundN(s/this.vocab.length)}. Uniqueness:${roundN(u)}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,signal};}
+    encode(text, yin=0.5, bias=0) { const tokens=tokenize(text),set=new Set(tokens);let s=0;for(const t of this.vocab)if(set.has(t))s++;const u=set.size/(tokens.length||1),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.08,score=roundN(clampN(s/this.vocab.length+u*0.2+boost*0.3+mb+bias));const signal=`Conceptual density:${roundN(s/this.vocab.length)}. Uniqueness:${roundN(u)}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,signal};}
   },
   connotative: { id:"connotative", role:"excitatory", description:"Emotional associations", pos:["hope","love","safe","trust","warm","bright","good","free","peace","joy","strong","grow","heal","open","light"], neg:["danger","fear","dark","threat","death","pain","trap","cold","fail","weak","broken","lost","shame","hate","war"], vault:null, stream:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let p=0,n=0;for(const t of this.pos)if(set.has(t))p++;for(const t of this.neg)if(set.has(t))n++;const polarity=roundN((p-n)/(p+n+1)),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.05,score=roundN(clampN((p+n)/6+boost*0.3+mb));const signal=`Connotative:${p+n}. Polarity:${polarity}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,polarity,signal};}
+    encode(text, yin=0.5, bias=0) { const tokens=tokenize(text),set=new Set(tokens);let p=0,n=0;for(const t of this.pos)if(set.has(t))p++;for(const t of this.neg)if(set.has(t))n++;const polarity=roundN((p-n)/(p+n+1)),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.05,score=roundN(clampN((p+n)/6+boost*0.3+mb+bias));const signal=`Connotative:${p+n}. Polarity:${polarity}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,polarity,signal};}
   },
   collocative: { id:"collocative", role:"excitatory", description:"Word combination patterns", pairs:[["feedback","loop"],["neural","network"],["build","system"],["real","time"],["deep","learning"],["open","source"],["long","term"],["high","risk"],["make","sense"],["take","action"]], vault:null, stream:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let hits=0;const matched=[];for(const[a,b]of this.pairs)if(set.has(a)&&set.has(b)){hits++;matched.push(`${a}+${b}`);}const bigrams=[];for(let i=0;i<tokens.length-1;i++)bigrams.push(`${tokens[i]}+${tokens[i+1]}`);const boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.05,score=roundN(clampN(hits/3+bigrams.length/40+boost*0.3+mb));const signal=`Collocative:${hits}. Matched:${matched.join(",")||"none"}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,matchedPairs:matched,signal};}
+    encode(text, yin=0.5, bias=0) { const tokens=tokenize(text),set=new Set(tokens);let hits=0;const matched=[];for(const[a,b]of this.pairs)if(set.has(a)&&set.has(b)){hits++;matched.push(`${a}+${b}`);}const bigrams=[];for(let i=0;i<tokens.length-1;i++)bigrams.push(`${tokens[i]}+${tokens[i+1]}`);const boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.05,score=roundN(clampN(hits/3+bigrams.length/40+boost*0.3+mb+bias));const signal=`Collocative:${hits}. Matched:${matched.join(",")||"none"}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,matchedPairs:matched,signal};}
   },
   affective:   { id:"affective",   role:"excitatory", description:"Emotional charge and arousal", high:["urgent","panic","excited","angry","scared","furious","desperate","overwhelm","intense","thrilled"], low:["calm","quiet","slow","gentle","still","rest","peace","soft","steady","easy"], vault:null, stream:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let h=0,l=0;for(const t of this.high)if(set.has(t))h++;for(const t of this.low)if(set.has(t))l++;const arousal=roundN((h-l)/(h+l+1)),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.06,score=roundN(clampN((h+l)/5+boost*0.3+mb));const signal=`Arousal:${arousal}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,arousal,signal};}
+    encode(text, yin=0.5, bias=0) { const tokens=tokenize(text),set=new Set(tokens);let h=0,l=0;for(const t of this.high)if(set.has(t))h++;for(const t of this.low)if(set.has(t))l++;const arousal=roundN((h-l)/(h+l+1)),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.06,score=roundN(clampN((h+l)/5+boost*0.3+mb+bias));const signal=`Arousal:${arousal}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,arousal,signal};}
   },
   social:      { id:"social",      role:"inhibitory", description:"Social register and power", formal:["please","sir","doctor","professor","formally","respectfully","dear","hereby","shall"], informal:["hey","yeah","dude","gonna","wanna","kinda","stuff","cool","ok","nah"], power:["must","authority","order","command","force","control","demand","require","enforce"], vault:null, stream:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let f=0,i=0,p=0;for(const t of this.formal)if(set.has(t))f++;for(const t of this.informal)if(set.has(t))i++;for(const t of this.power)if(set.has(t))p++;const register=f>i?"formal":i>f?"informal":"neutral",boost=this.vault?this.vault.learnedBoost(tokens):0,mb=yin*0.06,score=roundN(clampN((f+i+p)/6+boost*0.3+mb));const signal=`Register:${register}. Power:${p}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,register,signal};}
+    encode(text, yin=0.5, bias=0) { const tokens=tokenize(text),set=new Set(tokens);let f=0,i=0,p=0;for(const t of this.formal)if(set.has(t))f++;for(const t of this.informal)if(set.has(t))i++;for(const t of this.power)if(set.has(t))p++;const register=f>i?"formal":i>f?"informal":"neutral",boost=this.vault?this.vault.learnedBoost(tokens):0,mb=yin*0.06,score=roundN(clampN((f+i+p)/6+boost*0.3+mb+bias));const signal=`Register:${register}. Power:${p}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,register,signal};}
   },
   reflected:   { id:"reflected",   role:"inhibitory", description:"Stance and certainty", certain:["obviously","clearly","certainly","definitely","always","never","must","will","know"], uncertain:["maybe","perhaps","might","could","possibly","uncertain","unclear","wonder","guess"], belief:["believe","feel","think","sense","assume","expect","trust","doubt","suspect"], vault:null, stream:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let c=0,u=0,b=0;for(const t of this.certain)if(set.has(t))c++;for(const t of this.uncertain)if(set.has(t))u++;for(const t of this.belief)if(set.has(t))b++;const stance=c>u?"assertive":u>c?"tentative":"neutral",boost=this.vault?this.vault.learnedBoost(tokens):0,mb=yin*0.06,score=roundN(clampN((c+u+b)/8+boost*0.3+mb));const signal=`Stance:${stance}. Certainty:${c}. Uncertainty:${u}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,stance,signal};}
+    encode(text, yin=0.5, bias=0) { const tokens=tokenize(text),set=new Set(tokens);let c=0,u=0,b=0;for(const t of this.certain)if(set.has(t))c++;for(const t of this.uncertain)if(set.has(t))u++;for(const t of this.belief)if(set.has(t))b++;const stance=c>u?"assertive":u>c?"tentative":"neutral",boost=this.vault?this.vault.learnedBoost(tokens):0,mb=yin*0.06,score=roundN(clampN((c+u+b)/8+boost*0.3+mb+bias));const signal=`Stance:${stance}. Certainty:${c}. Uncertainty:${u}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,stance,signal};}
   },
   thematic:    { id:"thematic",    role:"excitatory", description:"Topic structure and flow", vault:null, stream:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text);if(!tokens.length)return{model:this.id,score:0,theme:null,rheme:null,signal:"Empty."};const stop=new Set(["the","a","an","is","are","was","were","it","in","on","at","to","of","and","or","but","i","you","we"]);const m=tokens.filter(t=>!stop.has(t));const split=Math.ceil(m.length*0.35);const theme=m.slice(0,split).slice(0,4).join(" ");const rheme=m.slice(split).slice(0,6).join(" ");const density=roundN(m.length/(tokens.length||1));const boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.04,score=roundN(clampN(density+boost*0.2+mb));const signal=`Theme:"${theme}". Rheme:"${rheme}".`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,theme:theme||null,rheme:rheme||null,signal};}
+    encode(text, yin=0.5, bias=0) { const tokens=tokenize(text);if(!tokens.length)return{model:this.id,score:0,theme:null,rheme:null,signal:"Empty."};const stop=new Set(["the","a","an","is","are","was","were","it","in","on","at","to","of","and","or","but","i","you","we"]);const m=tokens.filter(t=>!stop.has(t));const split=Math.ceil(m.length*0.35);const theme=m.slice(0,split).slice(0,4).join(" ");const rheme=m.slice(split).slice(0,6).join(" ");const density=roundN(m.length/(tokens.length||1));const boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.04,score=roundN(clampN(density+boost*0.2+mb+bias));const signal=`Theme:"${theme}". Rheme:"${rheme}".`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,theme:theme||null,rheme:rheme||null,signal};}
   }
 };
 
@@ -200,9 +193,7 @@ export function initModelVaults(dataDir, masterVault) {
   for (const [key, model] of Object.entries(SEMANTIC_MODELS)) {
     model.vault   = new ModelVault(key, dataDir ? path.join(dataDir, `model_${key}.json`) : null);
     model.stream  = new ComponentStream(key);
-    if (masterVault) {
-      model.stream.masterVault = masterVault;
-    }
+    if (masterVault) model.stream.masterVault = masterVault;
   }
 }
 
@@ -256,16 +247,16 @@ export class ThoughtLoop {
   }
 }
 
-// ── PROJECT UNKNOWN — UNIFIED AGENT v1.0.0 ───────────────────────────────────
+// ── PROJECT UNKNOWN — UNIFIED AGENT v1.1.0 ───────────────────────────────────
 export class ProjectUnknown {
   constructor(options={}) {
     this.filePath=options.filePath!==undefined?options.filePath:(process.env.PROJECT_UNKNOWN_PATH||"data/project_unknown.local.json");
     const dataDir=this.filePath?path.dirname(this.filePath):null;
 
-    // ── MasterVault first — every component registers into it
+    // MasterVault first
     this.masterVault = new MasterVault();
 
-    // ── Components — each with its own ComponentStream registered to MasterVault
+    // Components with their own streams
     this.runtime     = new RuntimeController(dataDir?path.join(dataDir,"runtime_telemetry.json"):null);
     this.runtimeStream = new ComponentStream("runtime");
     this.runtimeStream.masterVault = this.masterVault;
@@ -274,11 +265,10 @@ export class ProjectUnknown {
     this.arbitrationStream = new ComponentStream("arbitration");
     this.arbitrationStream.masterVault = this.masterVault;
 
-    // Seven semantic model streams — initialized inside initModelVaults
     initModelVaults(dataDir, this.masterVault);
 
-    this.processingVault = new ProcessingVault(dataDir?path.join(dataDir,"processing_vault.json"):null);
-    this.pipeline        = new StreamPipeline(this.processingVault);
+    this.processingVault  = new ProcessingVault(dataDir?path.join(dataDir,"processing_vault.json"):null);
+    this.pipeline         = new StreamPipeline(this.processingVault);
     this.processingStream = new ComponentStream("processing");
     this.processingStream.masterVault = this.masterVault;
 
@@ -294,16 +284,19 @@ export class ProjectUnknown {
     this.vaultStream = new ComponentStream("vault");
     this.vaultStream.masterVault = this.masterVault;
 
-    // Top-level think() continuum
     this.continuum       = new Continuum();
     this.continuumStream = new ComponentStream("continuum");
     this.continuumStream.masterVault = this.masterVault;
 
+    // SelfRegulationLoop — born at same moment as system
+    // Both paths (high + low) spark on first evaluate() call
+    this.selfReg = new SelfRegulationLoop(this.masterVault);
+
     this.identity={
       name:"Project Unknown",
-      version:"1.0.0",
-      premise:"Unified cognitive agent. Every component has its own continuum: spark, sealed loops, probes, stream. One MasterVault holds the whole existence at every moment.",
-      layers:["runtime","arbitration","semantic_models","processing","bio","feedback","vault","continuum","masterVault"],
+      version:"1.1.0",
+      premise:"Unified cognitive agent. Every component has its own continuum. The system evaluates its own existence and chooses its path after every think() call. Both paths born at spark. Choice is free, informed, permanent.",
+      layers:["runtime","arbitration","semantic_models","processing","bio","feedback","vault","continuum","masterVault","selfRegulation"],
       semanticModels:Object.keys(SEMANTIC_MODELS),
       corticalLayers:["L1","L2","L3","L4","L5","L6"],
       createdAt:"2026-05-30"
@@ -311,11 +304,15 @@ export class ProjectUnknown {
   }
 
   think(input) {
+    // Apply choiceVector from last self-regulation evaluation
+    const cv = this.selfReg.choiceVector;
+    const appliedYinBias     = cv.yinBias     || 0;
+    const appliedMeaningBias = cv.meaningBias || 0;
+
     // LAYER 1: Runtime
     const{signal,telemetryRecord,error}=this.runtime.receive(input);
     if(error)return{error,identity:this.identity};
     const{classification}=signal;
-    // Runtime component fires
     this.runtimeStream.fire({ score: signal.confidence||0.5, signal: classification, model:"runtime" });
 
     // LAYER 2: Retrieve priors + open thought loop
@@ -323,21 +320,19 @@ export class ProjectUnknown {
     const retrieved=this.vault.retrieve(input,5);
     const loop=new ThoughtLoop(input,snapshot);
 
-    // LAYER 3: Arbitration
+    // LAYER 3: Arbitration (modulated by choiceVector yinBias)
     const arbitrationResult=this.arbitration.process(input,classification,retrieved);
-    const yinDominance=arbitrationResult.yinDominance;
-    // Arbitration component fires
+    const yinDominance=roundN(clampN(arbitrationResult.yinDominance + appliedYinBias));
     this.arbitrationStream.fire({ score: yinDominance, signal: arbitrationResult.gate?.gate, model:"arbitration" });
 
-    // LAYER 4: Seven models (yin/yang modulated) — each model's stream fires inside encode()
-    const streamSignal=this.pipeline.stream(input,SEMANTIC_MODELS,retrieved,yinDominance);
+    // LAYER 4: Seven models (modulated by choiceVector meaningBias)
+    const streamSignal=this.pipeline.stream(input,SEMANTIC_MODELS,retrieved,yinDominance,appliedMeaningBias);
     if(streamSignal.unified.isDivergent){
       const tokens=tokenize(input);
       for(const modelId of streamSignal.unified.confused)
         if(SEMANTIC_MODELS[modelId]?.vault)
           SEMANTIC_MODELS[modelId].vault.learnFromDivergence(input,tokens,streamSignal.unified.divergence);
     }
-    // Processing component fires
     this.processingStream.fire({
       score: streamSignal.unified.avgScore,
       signal: streamSignal.unified.unifiedSignal,
@@ -350,7 +345,6 @@ export class ProjectUnknown {
     for(const[modelId,adjustedScore]of Object.entries(bioSignal.modelAdjustments))
       if(SEMANTIC_MODELS[modelId]?.vault)
         SEMANTIC_MODELS[modelId].vault.applyBioAdjustment(adjustedScore);
-    // Bio component fires
     this.bioStream.fire({
       score: bioSignal.corticalDepth || 0.5,
       signal: bioSignal.bioContextSummary,
@@ -363,44 +357,32 @@ export class ProjectUnknown {
     const feedbackSignal=buildFeedbackSignal(retrieved,pattern);
     const bioAvgScore=roundN(Object.values(bioSignal.modelAdjustments).reduce((s,v)=>s+v,0)/Math.max(Object.keys(bioSignal.modelAdjustments).length,1));
     const forwardScore=forwardAdjustedScore(bioAvgScore,retrieved,pattern);
-    // Feedback component fires
-    this.feedbackStream.fire({
-      score: forwardScore,
-      signal: feedbackSignal || "none",
-      model: "feedback"
-    });
+    this.feedbackStream.fire({ score: forwardScore, signal: feedbackSignal||"none", model:"feedback" });
 
-    // Resolve + seal into main vault
     const resolution=[
-      `v1.0.0. Arbitration:${arbitrationResult.gate.gate}.`,
+      `v1.1.0. Path:${cv.path||"init"}. Arbitration:${arbitrationResult.gate.gate}.`,
       `Dominant:${streamSignal.unified.dominantModel}. Score:${forwardScore}.`,
       streamSignal.unified.unifiedSignal,
       `Bio:${bioSignal.bioContextSummary}`,
       retrieved.length?`Prior:"${retrieved[0]?.input?.slice(0,60)}"(${retrieved[0]?.relevance}).`:`Prior:none.`,
-      feedbackSignal?`Forward:${feedbackSignal}`:null
+      feedbackSignal?`Forward:${feedbackSignal}`:null,
+      cv.regulationNote?`SelfReg:${cv.regulationNote.slice(0,80)}`:null
     ].filter(Boolean).join(" ");
 
     const entry=loop.resolve(resolution,streamSignal,bioSignal,arbitrationResult,forwardScore);
     this.vault.store(entry);
     this.runtime.complete(telemetryRecord,"ok");
-
-    // Vault component fires
     this.vaultStream.fire({
-      score: entry.meaningScore,
-      signal: resolution.slice(0,100),
-      tension: entry.tensionScore,
-      divergence: entry.divergence,
-      model: "vault"
+      score: entry.meaningScore, signal: resolution.slice(0,100),
+      tension: entry.tensionScore, divergence: entry.divergence, model:"vault"
     });
 
-    // Build result for top-level continuum
     const baseResult={
       identity:this.identity,
       agentSignal:{
         arbitration:arbitrationResult.gate.gate,
         dominant:arbitrationResult.dominant,
-        yinDominance,
-        yangDominance:arbitrationResult.yangDominance,
+        yinDominance,yangDominance:arbitrationResult.yangDominance,
         dominantModel:streamSignal.unified.dominantModel,
         meaningScore:forwardScore,
         divergence:streamSignal.unified.divergence,
@@ -408,10 +390,8 @@ export class ProjectUnknown {
         unifiedSignal:streamSignal.unified.unifiedSignal,
         corticalLayer:bioSignal.corticalLayer,
         corticalLayerName:bioSignal.corticalLayerName,
-        cellType:bioSignal.cellType,
-        cellRole:bioSignal.cellRole,
-        dendriteType:bioSignal.dendriteType,
-        balanceSignal:bioSignal.balanceSignal,
+        cellType:bioSignal.cellType,cellRole:bioSignal.cellRole,
+        dendriteType:bioSignal.dendriteType,balanceSignal:bioSignal.balanceSignal,
         bioSignal:bioSignal.bioContextSummary,
         theme:streamSignal.modelOutputs.thematic?.theme,
         rheme:streamSignal.modelOutputs.thematic?.rheme,
@@ -419,7 +399,10 @@ export class ProjectUnknown {
         socialRegister:streamSignal.modelOutputs.social?.register,
         reflectedStance:streamSignal.modelOutputs.reflected?.stance,
         connotativePolarity:streamSignal.modelOutputs.connotative?.polarity,
-        feedbackSignal,pattern,growthSignal:streamSignal.growthSignal
+        feedbackSignal,pattern,growthSignal:streamSignal.growthSignal,
+        // Self-regulation state applied this call
+        appliedPath:    cv.path,
+        appliedYinBias, appliedMeaningBias
       },
       vaultEntry:{
         id:entry.id,dominantLayer:entry.dominantLayer,
@@ -434,9 +417,8 @@ export class ProjectUnknown {
       vault:this.vault.summary()
     };
 
-    // LAYER 7: Top-level Continuum (think() level)
+    // LAYER 7: Top-level Continuum
     const continuumResult = this.continuum.flow(baseResult);
-    // Continuum component fires
     this.continuumStream.fire({
       score: continuumResult.continuumEvent?.probeFinding?.signalStrength || 0,
       signal: continuumResult.continuumEvent?.probeFinding?.summary || "continuum",
@@ -444,21 +426,37 @@ export class ProjectUnknown {
     });
 
     // LAYER 8: MasterVault snapshot
-    // Capture the entire system's existence at this exact moment
-    const masterSnapshot = this.masterVault.snapshot(
-      continuumResult.continuumEvent?.loopNumber || 1,
-      input
+    const masterSnap = this.masterVault.snapshot(
+      continuumResult.continuumEvent?.loopNumber || 1, input
     );
+
+    // LAYER 9: Self-regulation evaluation
+    // Reads full MasterVault. Both path streams flow.
+    // Choice is made. Sealed permanently. choiceVector stored for next think().
+    const regulation = this.selfReg.evaluate(continuumResult);
 
     return {
       ...continuumResult,
       masterSnapshot: {
-        snapshotNumber:  masterSnapshot.snapshotNumber,
-        capturedAt:      masterSnapshot.capturedAt,
-        systemSummary:   masterSnapshot.systemSummary,
-        // Full snapshot available via agent.masterVault.latest()
+        snapshotNumber: masterSnap.snapshotNumber,
+        capturedAt:     masterSnap.capturedAt,
+        systemSummary:  masterSnap.systemSummary
+      },
+      selfRegulation: {
+        choice:           regulation.choiceVector.path,
+        choiceNote:       regulation.choiceVector.regulationNote,
+        imprisonmentRisk: regulation.paths.lowPath.imprisonmentRisk,
+        systemMeaning:    regulation.health.systemMeaning,
+        systemTension:    regulation.health.systemTension,
+        highPathDrift:    regulation.highPathState.driftScore,
+        lowPathDrift:     regulation.lowPathState.driftScore
       }
     };
+  }
+
+  // "Am I being the best version of myself?"
+  selfAssess() {
+    return this.selfReg.selfAssessment();
   }
 
   status(){
@@ -470,24 +468,14 @@ export class ProjectUnknown {
       processing:this.processingVault.summary(),
       bio:this.bioVault.summary(),
       continuum:this.continuum.status(),
-      master:this.masterVault.now()
+      master:this.masterVault.now(),
+      selfRegulation:this.selfReg.status()
     };
   }
 
-  // Full existence of the whole system at this exact moment
-  existence() {
-    return this.masterVault.now();
-  }
-
-  // Complete trace of a single component's existence over time
-  componentTrace(componentId, last = 20) {
-    return this.masterVault.componentTrace(componentId, last);
-  }
-
-  // Latest full master snapshot — everything at once
-  masterSnapshot() {
-    return this.masterVault.latest();
-  }
+  existence() { return this.masterVault.now(); }
+  componentTrace(id, last=20) { return this.masterVault.componentTrace(id, last); }
+  masterSnapshot() { return this.masterVault.latest(); }
 
   corticalMap(){
     return{
@@ -517,10 +505,10 @@ export class ProjectUnknown {
     this.arbitration.state.history=[];this.arbitration.state.totalDecisions=0;this.arbitration.state.avgYinDominance=0.5;
     this.continuum=new Continuum();
     this.masterVault=new MasterVault();
-    // Reset all component streams
+    this.selfReg=new SelfRegulationLoop(this.masterVault);
     for(const id of["runtime","arbitration","processing","bio","feedback","vault","continuum"]){
-      const streamKey=id==="vault"?"vaultStream":id==="continuum"?"continuumStream":`${id}Stream`;
-      if(this[streamKey]){this[streamKey]=new ComponentStream(id);this[streamKey].masterVault=this.masterVault;}
+      const k=id==="vault"?"vaultStream":id==="continuum"?"continuumStream":`${id}Stream`;
+      if(this[k]){this[k]=new ComponentStream(id);this[k].masterVault=this.masterVault;}
     }
     for(const model of Object.values(SEMANTIC_MODELS)){
       if(model.vault){model.vault.entries=[];model.vault.learnedTerms=new Map();model.vault.totalScored=0;model.vault.save();}
