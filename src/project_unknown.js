@@ -1,6 +1,6 @@
 /**
  * PROJECT UNKNOWN
- * Version 0.3.0
+ * Version 0.4.0
  *
  * The premise:
  * Instead of one permanent feedback loop,
@@ -13,11 +13,14 @@
  * Each processes a distinct layer of meaning.
  * Together they give every thought a seven-layer meaning vector.
  *
+ * v0.4.0: Feedback-forward loop — the vault actively shapes each new resolution.
+ *
  * Conceived: May 30, 2026
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { analyzeVaultPattern, buildFeedbackSignal, forwardAdjustedScore } from "./feedback_forward.js";
 
 export function nowISO() { return new Date().toISOString(); }
 export function uid() { return `loop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
@@ -166,6 +169,7 @@ export function runSevenLayers(input, loopId) {
       reflectedStance: embeddings.reflected?.stance,
       connotativePolarity: embeddings.connotative?.polarity,
       theme: embeddings.thematic?.theme,
+      rheme: embeddings.thematic?.rheme,
       summary: signals.join(" | ")
     }
   };
@@ -187,6 +191,7 @@ export class FeedbackVault {
       .map(l => ({ ...l, relevance: roundN(globalTFIDF.similarity(input,(l.input||"")+" "+(l.resolution||""))*0.5+(l.meaningScore||0)*0.25+(l.learningPressure||0)*0.25) }))
       .filter(l => l.relevance > 0).sort((a,b) => b.relevance-a.relevance).slice(0, count);
   }
+  recent(n = 20) { return this.loops.slice(-n); }
   snapshot() { return this.loops.slice(-50); }
   summary() {
     const avg = k => this.loops.length ? roundN(this.loops.reduce((s,l)=>s+(l[k]||0),0)/this.loops.length) : 0;
@@ -223,14 +228,15 @@ export class ThoughtLoop {
     this.tensionScore = roundN(1 - avgRel);
     this.learningPressure = roundN(clampN(this.tensionScore*0.6 + Math.min(this.entropy,4)/4*0.4));
   }
-  resolve(resolution, meaningResult) {
+  resolve(resolution, meaningResult, forwardScore) {
     this.resolution = resolution; this.closedAt = nowISO();
     return {
       id: this.id, input: this.input, resolution,
       openedAt: this.openedAt, closedAt: this.closedAt,
       inputEntropy: this.entropy, tensionScore: this.tensionScore, learningPressure: this.learningPressure,
       resonantLoops: this.resonantLoops,
-      meaningScore: meaningResult.vaultPayload.meaningScore,
+      meaningScore: forwardScore ?? meaningResult.vaultPayload.meaningScore,
+      baseMeaningScore: meaningResult.vaultPayload.meaningScore,
       dominantLayer: meaningResult.vaultPayload.dominantLayer,
       meaningEmbeddings: meaningResult.vaultPayload.embeddings
     };
@@ -240,28 +246,48 @@ export class ThoughtLoop {
 // ── PROJECT UNKNOWN — MAIN ENGINE ──────────────────────
 export class ProjectUnknown {
   constructor(options = {}) {
-    this.filePath = options.filePath || process.env.PROJECT_UNKNOWN_PATH || "data/project_unknown.local.json";
+    this.filePath = options.filePath !== undefined ? options.filePath : (process.env.PROJECT_UNKNOWN_PATH || "data/project_unknown.local.json");
     this.vault = new FeedbackVault(this.filePath);
     this.identity = {
-      name: "Project Unknown", version: "0.3.0",
+      name: "Project Unknown", version: "0.4.0",
       premise: "Every thought is its own feedback loop. Seven semantic models are the working parts. The vault grows forever. The intelligence is the vault.",
       semanticLayers: Object.keys(SEMANTIC_MODELS), createdAt: "2026-05-30"
     };
   }
+
   think(input) {
     const snapshot = this.vault.snapshot();
     const loop = new ThoughtLoop(input, snapshot);
     const meaning = runSevenLayers(input, loop.id);
     const retrieved = this.vault.retrieve(input, 5);
+
+    // Feedback-forward: vault pattern analysis shapes this resolution
+    const recentLoops = this.vault.recent(20);
+    const pattern = analyzeVaultPattern(recentLoops);
+    const feedbackSignal = buildFeedbackSignal(retrieved, pattern);
+    const forwardScore = forwardAdjustedScore(meaning.vaultPayload.meaningScore, retrieved, pattern);
+
     const resolution = [
-      `Seven-layer analysis. Dominant: ${meaning.vaultPayload.dominantLayer}. Score: ${meaning.vaultPayload.meaningScore}.`,
+      `Seven-layer analysis. Dominant: ${meaning.vaultPayload.dominantLayer}. Score: ${forwardScore}.`,
       `Tension: ${loop.tensionScore}. Learning pressure: ${loop.learningPressure}.`,
-      retrieved.length ? `Vault: ${retrieved.length} prior loop(s). Strongest: "${retrieved[0]?.input?.slice(0,60)}" (${retrieved[0]?.relevance}).` : `No prior vault resonance.`
-    ].join(" ");
-    const entry = loop.resolve(resolution, meaning);
+      retrieved.length
+        ? `Vault: ${retrieved.length} prior loop(s). Strongest: "${retrieved[0]?.input?.slice(0,60)}" (${retrieved[0]?.relevance}).`
+        : `No prior vault resonance.`,
+      feedbackSignal ? `Forward: ${feedbackSignal}` : null
+    ].filter(Boolean).join(" ");
+
+    const entry = loop.resolve(resolution, meaning, forwardScore);
     this.vault.store(entry);
-    return { identity: this.identity, agentSignal: meaning.agentSignal, vaultEntry: { id: entry.id, dominantLayer: entry.dominantLayer, meaningScore: entry.meaningScore, tensionScore: entry.tensionScore }, retrieved, vault: this.vault.summary() };
+
+    return {
+      identity: this.identity,
+      agentSignal: { ...meaning.agentSignal, meaningScore: forwardScore, feedbackSignal, pattern },
+      vaultEntry: { id: entry.id, dominantLayer: entry.dominantLayer, meaningScore: entry.meaningScore, baseMeaningScore: entry.baseMeaningScore, tensionScore: entry.tensionScore },
+      retrieved,
+      vault: this.vault.summary()
+    };
   }
+
   status() { return { identity: this.identity, vault: this.vault.summary() }; }
   recall(query, count = 8) { return { query, results: this.vault.retrieve(query, count), vaultSize: this.vault.loops.length }; }
   reset() { this.vault.loops = []; this.vault.totalLoopsEver = 0; this.vault.save(); return this.status(); }
