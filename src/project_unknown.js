@@ -1,40 +1,46 @@
 /**
  * PROJECT UNKNOWN
- * Version 0.9.0
+ * Version 1.0.0
  *
- * Unified cognitive agent with continuum architecture.
+ * Every component has its own continuum.
+ * One MasterVault holds the whole existence.
  *
  * Full processing stack:
  * INPUT
- *   → RuntimeController     (ingestion, classification, telemetry)
- *   → ArbitrationProcessor  (yin/yang dual path, gate decision)
- *   → Seven Semantic Models  (parallel dimensional scoring, yin/yang weighted)
- *   → ProcessingVault        (unification, divergence detection)
- *   → BioLayer               (cortical topology, cell type, depth, balance feedback)
- *   → FeedbackForward        (pattern analysis, history-informed score adjustment)
- *   → FeedbackVault          (permanent memory)
- *   → Continuum              (spark → seal → probe → absorb → feed back to all sealed loops)
+ *   → RuntimeController     (ingestion, classification, telemetry)       [component: runtime]
+ *   → ArbitrationProcessor  (yin/yang dual path, gate decision)          [component: arbitration]
+ *   → Seven Semantic Models  (parallel dimensional scoring)              [components: conceptual…thematic]
+ *   → ProcessingVault        (unification, divergence detection)         [component: processing]
+ *   → BioLayer               (cortical topology, cell type, depth)       [component: bio]
+ *   → FeedbackForward        (pattern analysis, history-informed score)  [component: feedback]
+ *   → FeedbackVault          (permanent memory)                          [component: vault]
+ *   → Continuum              (think()-level spark/seal/probe/stream)     [component: continuum]
+ *   → MasterVault            (whole existence at every moment)
  *   → OUTPUT
  *
- * Continuum rules:
- * - First think() call is the SPARK. The origin. Born from nothing.
- * - Every loop that closes is sealed permanently (immutable).
- * - Every sealed loop spawns a probe from its exact historical vantage.
- * - Probe runs one cycle, returns its finding to the main stream.
- * - Main stream absorbs the finding. Grows permanently.
- * - Main stream feeds a signal back into EVERY sealed loop forever.
- * - Sealed loops never change what they were.
- *   But they always know what the main stream became after them.
- * - The spark is the only loop born without a parent.
- *   Every loop that follows feeds knowledge back to it forever.
+ * Per-component continuum rules (applies to every component):
+ * - First firing = spark. Born from nothing.
+ * - Every firing closes and seals a loop. Immutable.
+ * - Every sealed loop spawns a probe from its exact vantage.
+ * - Probe runs one cycle. Returns finding. Ceases.
+ * - MainStream absorbs finding. Grows permanently.
+ * - MainStream feeds back into every sealed loop forever.
+ * - MasterVault receives full existence state after every firing.
+ *
+ * MasterVault:
+ * - Receives every component's existence state after every think().
+ * - Writes a full system snapshot: the whole existence at that exact moment.
+ * - Holds the complete history of every component forever.
+ * - Never truncates. Never forgets.
  *
  * Version history:
- * 0.1–0.4 — seven models, TF-IDF, divergence, elemental weights
- * 0.5.0   — processing vault + stream pipeline
- * 0.6.0   — feedback-forward engine
- * 0.7.0   — bio layer + cortical topology
- * 0.8.0   — runtime controller + arbitration layer
- * 0.9.0   — continuum: spark, probe, sealed loop feed-back, main stream
+ * 0.1–0.4  seven models, TF-IDF, divergence, elemental weights
+ * 0.5.0    processing vault + stream pipeline
+ * 0.6.0    feedback-forward engine
+ * 0.7.0    bio layer + cortical topology
+ * 0.8.0    runtime controller + arbitration layer
+ * 0.9.0    continuum: spark, probe, sealed loop feed-back, main stream
+ * 1.0.0    per-component continuums + MasterVault
  *
  * Conceived: May 30, 2026
  */
@@ -47,6 +53,7 @@ import { BioVault, BioLayer } from "./bio_layer.js";
 import { RuntimeController } from "./runtime.js";
 import { ArbitrationProcessor } from "./arbitration.js";
 import { Continuum } from "./continuum.js";
+import { ComponentStream, MasterVault } from "./component_continuum.js";
 
 export function nowISO() { return new Date().toISOString(); }
 export function uid() { return `loop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
@@ -56,7 +63,7 @@ export function tokenize(text) {
   return String(text || "").toLowerCase().replace(/[^a-z0-9\s-]/g, " ").split(/\s+/).filter(Boolean);
 }
 
-// ── TF-IDF ENGINE ─────────────────────────────────────────
+// ── TF-IDF ENGINE ────────────────────────────────────────────────────────────
 export class TFIDF {
   constructor() { this.corpus = []; this.dfCache = new Map(); }
   addDocument(text) { this.corpus.push(tokenize(text)); this.dfCache.clear(); }
@@ -85,7 +92,7 @@ export class TFIDF {
 
 export const globalTFIDF = new TFIDF();
 
-// ── MODEL VAULT ────────────────────────────────────────────
+// ── MODEL VAULT ──────────────────────────────────────────────────────────────
 export class ModelVault {
   constructor(modelId, filePath) {
     this.modelId = modelId; this.filePath = filePath;
@@ -164,38 +171,42 @@ export class ModelVault {
   }
 }
 
-// ── SEVEN SEMANTIC MODELS ────────────────────────────────
+// ── SEVEN SEMANTIC MODELS ────────────────────────────────────────────────────
 export const SEMANTIC_MODELS = {
-  conceptual:  { id:"conceptual",  role:"excitatory", description:"Denotative meaning", vocab:["define","means","is","refers","concept","object","entity","thing","what","type","kind","category","class","form","structure","function","purpose","system","process","state","condition","property","attribute","relation"], vault:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let s=0;for(const t of this.vocab)if(set.has(t))s++;const u=set.size/(tokens.length||1),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.08,final=roundN(clampN(s/this.vocab.length+u*0.2+boost*0.3+mb));const signal=`Conceptual density:${roundN(s/this.vocab.length)}. Uniqueness:${roundN(u)}.`;if(this.vault)this.vault.store(text,final,tokens,signal);return{model:this.id,score:final,signal};}
+  conceptual:  { id:"conceptual",  role:"excitatory", description:"Denotative meaning", vocab:["define","means","is","refers","concept","object","entity","thing","what","type","kind","category","class","form","structure","function","purpose","system","process","state","condition","property","attribute","relation"], vault:null, stream:null,
+    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let s=0;for(const t of this.vocab)if(set.has(t))s++;const u=set.size/(tokens.length||1),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.08,score=roundN(clampN(s/this.vocab.length+u*0.2+boost*0.3+mb));const signal=`Conceptual density:${roundN(s/this.vocab.length)}. Uniqueness:${roundN(u)}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,signal};}
   },
-  connotative: { id:"connotative", role:"excitatory", description:"Emotional associations", pos:["hope","love","safe","trust","warm","bright","good","free","peace","joy","strong","grow","heal","open","light"], neg:["danger","fear","dark","threat","death","pain","trap","cold","fail","weak","broken","lost","shame","hate","war"], vault:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let p=0,n=0;for(const t of this.pos)if(set.has(t))p++;for(const t of this.neg)if(set.has(t))n++;const polarity=roundN((p-n)/(p+n+1)),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.05,final=roundN(clampN((p+n)/6+boost*0.3+mb));const signal=`Connotative:${p+n}. Polarity:${polarity}.`;if(this.vault)this.vault.store(text,final,tokens,signal);return{model:this.id,score:final,polarity,signal};}
+  connotative: { id:"connotative", role:"excitatory", description:"Emotional associations", pos:["hope","love","safe","trust","warm","bright","good","free","peace","joy","strong","grow","heal","open","light"], neg:["danger","fear","dark","threat","death","pain","trap","cold","fail","weak","broken","lost","shame","hate","war"], vault:null, stream:null,
+    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let p=0,n=0;for(const t of this.pos)if(set.has(t))p++;for(const t of this.neg)if(set.has(t))n++;const polarity=roundN((p-n)/(p+n+1)),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.05,score=roundN(clampN((p+n)/6+boost*0.3+mb));const signal=`Connotative:${p+n}. Polarity:${polarity}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,polarity,signal};}
   },
-  collocative: { id:"collocative", role:"excitatory", description:"Word combination patterns", pairs:[["feedback","loop"],["neural","network"],["build","system"],["real","time"],["deep","learning"],["open","source"],["long","term"],["high","risk"],["make","sense"],["take","action"]], vault:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let hits=0;const matched=[];for(const[a,b]of this.pairs)if(set.has(a)&&set.has(b)){hits++;matched.push(`${a}+${b}`);}const bigrams=[];for(let i=0;i<tokens.length-1;i++)bigrams.push(`${tokens[i]}+${tokens[i+1]}`);const boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.05,final=roundN(clampN(hits/3+bigrams.length/40+boost*0.3+mb));const signal=`Collocative:${hits}. Matched:${matched.join(",")||"none"}.`;if(this.vault)this.vault.store(text,final,tokens,signal);return{model:this.id,score:final,matchedPairs:matched,signal};}
+  collocative: { id:"collocative", role:"excitatory", description:"Word combination patterns", pairs:[["feedback","loop"],["neural","network"],["build","system"],["real","time"],["deep","learning"],["open","source"],["long","term"],["high","risk"],["make","sense"],["take","action"]], vault:null, stream:null,
+    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let hits=0;const matched=[];for(const[a,b]of this.pairs)if(set.has(a)&&set.has(b)){hits++;matched.push(`${a}+${b}`);}const bigrams=[];for(let i=0;i<tokens.length-1;i++)bigrams.push(`${tokens[i]}+${tokens[i+1]}`);const boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.05,score=roundN(clampN(hits/3+bigrams.length/40+boost*0.3+mb));const signal=`Collocative:${hits}. Matched:${matched.join(",")||"none"}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,matchedPairs:matched,signal};}
   },
-  affective:   { id:"affective",   role:"excitatory", description:"Emotional charge and arousal", high:["urgent","panic","excited","angry","scared","furious","desperate","overwhelm","intense","thrilled"], low:["calm","quiet","slow","gentle","still","rest","peace","soft","steady","easy"], vault:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let h=0,l=0;for(const t of this.high)if(set.has(t))h++;for(const t of this.low)if(set.has(t))l++;const arousal=roundN((h-l)/(h+l+1)),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.06,final=roundN(clampN((h+l)/5+boost*0.3+mb));const signal=`Arousal:${arousal}.`;if(this.vault)this.vault.store(text,final,tokens,signal);return{model:this.id,score:final,arousal,signal};}
+  affective:   { id:"affective",   role:"excitatory", description:"Emotional charge and arousal", high:["urgent","panic","excited","angry","scared","furious","desperate","overwhelm","intense","thrilled"], low:["calm","quiet","slow","gentle","still","rest","peace","soft","steady","easy"], vault:null, stream:null,
+    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let h=0,l=0;for(const t of this.high)if(set.has(t))h++;for(const t of this.low)if(set.has(t))l++;const arousal=roundN((h-l)/(h+l+1)),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.06,score=roundN(clampN((h+l)/5+boost*0.3+mb));const signal=`Arousal:${arousal}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,arousal,signal};}
   },
-  social:      { id:"social",      role:"inhibitory", description:"Social register and power", formal:["please","sir","doctor","professor","formally","respectfully","dear","hereby","shall"], informal:["hey","yeah","dude","gonna","wanna","kinda","stuff","cool","ok","nah"], power:["must","authority","order","command","force","control","demand","require","enforce"], vault:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let f=0,i=0,p=0;for(const t of this.formal)if(set.has(t))f++;for(const t of this.informal)if(set.has(t))i++;for(const t of this.power)if(set.has(t))p++;const register=f>i?"formal":i>f?"informal":"neutral",boost=this.vault?this.vault.learnedBoost(tokens):0,mb=yin*0.06,final=roundN(clampN((f+i+p)/6+boost*0.3+mb));const signal=`Register:${register}. Power:${p}.`;if(this.vault)this.vault.store(text,final,tokens,signal);return{model:this.id,score:final,register,signal};}
+  social:      { id:"social",      role:"inhibitory", description:"Social register and power", formal:["please","sir","doctor","professor","formally","respectfully","dear","hereby","shall"], informal:["hey","yeah","dude","gonna","wanna","kinda","stuff","cool","ok","nah"], power:["must","authority","order","command","force","control","demand","require","enforce"], vault:null, stream:null,
+    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let f=0,i=0,p=0;for(const t of this.formal)if(set.has(t))f++;for(const t of this.informal)if(set.has(t))i++;for(const t of this.power)if(set.has(t))p++;const register=f>i?"formal":i>f?"informal":"neutral",boost=this.vault?this.vault.learnedBoost(tokens):0,mb=yin*0.06,score=roundN(clampN((f+i+p)/6+boost*0.3+mb));const signal=`Register:${register}. Power:${p}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,register,signal};}
   },
-  reflected:   { id:"reflected",   role:"inhibitory", description:"Stance and certainty", certain:["obviously","clearly","certainly","definitely","always","never","must","will","know"], uncertain:["maybe","perhaps","might","could","possibly","uncertain","unclear","wonder","guess"], belief:["believe","feel","think","sense","assume","expect","trust","doubt","suspect"], vault:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let c=0,u=0,b=0;for(const t of this.certain)if(set.has(t))c++;for(const t of this.uncertain)if(set.has(t))u++;for(const t of this.belief)if(set.has(t))b++;const stance=c>u?"assertive":u>c?"tentative":"neutral",boost=this.vault?this.vault.learnedBoost(tokens):0,mb=yin*0.06,final=roundN(clampN((c+u+b)/8+boost*0.3+mb));const signal=`Stance:${stance}. Certainty:${c}. Uncertainty:${u}.`;if(this.vault)this.vault.store(text,final,tokens,signal);return{model:this.id,score:final,stance,signal};}
+  reflected:   { id:"reflected",   role:"inhibitory", description:"Stance and certainty", certain:["obviously","clearly","certainly","definitely","always","never","must","will","know"], uncertain:["maybe","perhaps","might","could","possibly","uncertain","unclear","wonder","guess"], belief:["believe","feel","think","sense","assume","expect","trust","doubt","suspect"], vault:null, stream:null,
+    encode(text, yin=0.5) { const tokens=tokenize(text),set=new Set(tokens);let c=0,u=0,b=0;for(const t of this.certain)if(set.has(t))c++;for(const t of this.uncertain)if(set.has(t))u++;for(const t of this.belief)if(set.has(t))b++;const stance=c>u?"assertive":u>c?"tentative":"neutral",boost=this.vault?this.vault.learnedBoost(tokens):0,mb=yin*0.06,score=roundN(clampN((c+u+b)/8+boost*0.3+mb));const signal=`Stance:${stance}. Certainty:${c}. Uncertainty:${u}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,stance,signal};}
   },
-  thematic:    { id:"thematic",    role:"excitatory", description:"Topic structure and flow", vault:null,
-    encode(text, yin=0.5) { const tokens=tokenize(text);if(!tokens.length)return{model:this.id,score:0,theme:null,rheme:null,signal:"Empty."};const stop=new Set(["the","a","an","is","are","was","were","it","in","on","at","to","of","and","or","but","i","you","we"]);const m=tokens.filter(t=>!stop.has(t));const split=Math.ceil(m.length*0.35);const theme=m.slice(0,split).slice(0,4).join(" ");const rheme=m.slice(split).slice(0,6).join(" ");const density=roundN(m.length/(tokens.length||1));const boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.04,final=roundN(clampN(density+boost*0.2+mb));const signal=`Theme:"${theme}". Rheme:"${rheme}".`;if(this.vault)this.vault.store(text,final,tokens,signal);return{model:this.id,score:final,theme:theme||null,rheme:rheme||null,signal};}
+  thematic:    { id:"thematic",    role:"excitatory", description:"Topic structure and flow", vault:null, stream:null,
+    encode(text, yin=0.5) { const tokens=tokenize(text);if(!tokens.length)return{model:this.id,score:0,theme:null,rheme:null,signal:"Empty."};const stop=new Set(["the","a","an","is","are","was","were","it","in","on","at","to","of","and","or","but","i","you","we"]);const m=tokens.filter(t=>!stop.has(t));const split=Math.ceil(m.length*0.35);const theme=m.slice(0,split).slice(0,4).join(" ");const rheme=m.slice(split).slice(0,6).join(" ");const density=roundN(m.length/(tokens.length||1));const boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.04,score=roundN(clampN(density+boost*0.2+mb));const signal=`Theme:"${theme}". Rheme:"${rheme}".`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,theme:theme||null,rheme:rheme||null,signal};}
   }
 };
 
-export function initModelVaults(dataDir) {
+export function initModelVaults(dataDir, masterVault) {
   for (const [key, model] of Object.entries(SEMANTIC_MODELS)) {
-    model.vault = new ModelVault(key, dataDir ? path.join(dataDir, `model_${key}.json`) : null);
+    model.vault   = new ModelVault(key, dataDir ? path.join(dataDir, `model_${key}.json`) : null);
+    model.stream  = new ComponentStream(key);
+    if (masterVault) {
+      model.stream.masterVault = masterVault;
+    }
   }
 }
 
-// ── FEEDBACK VAULT ──────────────────────────────────────
+// ── FEEDBACK VAULT ───────────────────────────────────────────────────────────
 export class FeedbackVault {
   constructor(filePath) {
     this.filePath=filePath;this.loops=[];this.totalLoopsEver=0;this.load();
@@ -215,7 +226,7 @@ export class FeedbackVault {
   load(){if(!this.filePath||!existsSync(this.filePath))return;try{const r=JSON.parse(readFileSync(this.filePath,"utf8"));this.loops=Array.isArray(r.loops)?r.loops:[];this.totalLoopsEver=r.totalLoopsEver||this.loops.length;}catch{this.loops=[];this.totalLoopsEver=0;}}
 }
 
-// ── THOUGHT LOOP ─────────────────────────────────────────
+// ── THOUGHT LOOP ─────────────────────────────────────────────────────────────
 function inputEntropy(text){const tokens=tokenize(text);if(!tokens.length)return 0;const freq=new Map();for(const t of tokens)freq.set(t,(freq.get(t)||0)+1);let h=0;for(const c of freq.values()){const p=c/tokens.length;h-=p*Math.log2(p);}return roundN(h);}
 
 export class ThoughtLoop {
@@ -245,27 +256,54 @@ export class ThoughtLoop {
   }
 }
 
-// ── PROJECT UNKNOWN — UNIFIED AGENT v0.9.0 ──────────────────
+// ── PROJECT UNKNOWN — UNIFIED AGENT v1.0.0 ───────────────────────────────────
 export class ProjectUnknown {
   constructor(options={}) {
     this.filePath=options.filePath!==undefined?options.filePath:(process.env.PROJECT_UNKNOWN_PATH||"data/project_unknown.local.json");
     const dataDir=this.filePath?path.dirname(this.filePath):null;
 
-    this.runtime      = new RuntimeController(dataDir?path.join(dataDir,"runtime_telemetry.json"):null);
-    this.arbitration  = new ArbitrationProcessor();
-    initModelVaults(dataDir);
+    // ── MasterVault first — every component registers into it
+    this.masterVault = new MasterVault();
+
+    // ── Components — each with its own ComponentStream registered to MasterVault
+    this.runtime     = new RuntimeController(dataDir?path.join(dataDir,"runtime_telemetry.json"):null);
+    this.runtimeStream = new ComponentStream("runtime");
+    this.runtimeStream.masterVault = this.masterVault;
+
+    this.arbitration = new ArbitrationProcessor();
+    this.arbitrationStream = new ComponentStream("arbitration");
+    this.arbitrationStream.masterVault = this.masterVault;
+
+    // Seven semantic model streams — initialized inside initModelVaults
+    initModelVaults(dataDir, this.masterVault);
+
     this.processingVault = new ProcessingVault(dataDir?path.join(dataDir,"processing_vault.json"):null);
-    this.pipeline     = new StreamPipeline(this.processingVault);
-    this.bioVault     = new BioVault(dataDir?path.join(dataDir,"bio_vault.json"):null);
-    this.bioLayer     = new BioLayer(this.bioVault);
-    this.vault        = new FeedbackVault(this.filePath);
-    this.continuum    = new Continuum();
+    this.pipeline        = new StreamPipeline(this.processingVault);
+    this.processingStream = new ComponentStream("processing");
+    this.processingStream.masterVault = this.masterVault;
+
+    this.bioVault  = new BioVault(dataDir?path.join(dataDir,"bio_vault.json"):null);
+    this.bioLayer  = new BioLayer(this.bioVault);
+    this.bioStream = new ComponentStream("bio");
+    this.bioStream.masterVault = this.masterVault;
+
+    this.feedbackStream = new ComponentStream("feedback");
+    this.feedbackStream.masterVault = this.masterVault;
+
+    this.vault       = new FeedbackVault(this.filePath);
+    this.vaultStream = new ComponentStream("vault");
+    this.vaultStream.masterVault = this.masterVault;
+
+    // Top-level think() continuum
+    this.continuum       = new Continuum();
+    this.continuumStream = new ComponentStream("continuum");
+    this.continuumStream.masterVault = this.masterVault;
 
     this.identity={
       name:"Project Unknown",
-      version:"0.9.0",
-      premise:"Unified cognitive agent with continuum architecture. Spark → probe → absorb → feed back. Grows its own cortical topology, vocabulary, and stream from experience.",
-      layers:["runtime","arbitration","semantic_models","processing_vault","bio_layer","feedback_forward","main_vault","continuum"],
+      version:"1.0.0",
+      premise:"Unified cognitive agent. Every component has its own continuum: spark, sealed loops, probes, stream. One MasterVault holds the whole existence at every moment.",
+      layers:["runtime","arbitration","semantic_models","processing","bio","feedback","vault","continuum","masterVault"],
       semanticModels:Object.keys(SEMANTIC_MODELS),
       corticalLayers:["L1","L2","L3","L4","L5","L6"],
       createdAt:"2026-05-30"
@@ -277,6 +315,8 @@ export class ProjectUnknown {
     const{signal,telemetryRecord,error}=this.runtime.receive(input);
     if(error)return{error,identity:this.identity};
     const{classification}=signal;
+    // Runtime component fires
+    this.runtimeStream.fire({ score: signal.confidence||0.5, signal: classification, model:"runtime" });
 
     // LAYER 2: Retrieve priors + open thought loop
     const snapshot=this.vault.snapshot();
@@ -286,8 +326,10 @@ export class ProjectUnknown {
     // LAYER 3: Arbitration
     const arbitrationResult=this.arbitration.process(input,classification,retrieved);
     const yinDominance=arbitrationResult.yinDominance;
+    // Arbitration component fires
+    this.arbitrationStream.fire({ score: yinDominance, signal: arbitrationResult.gate?.gate, model:"arbitration" });
 
-    // LAYER 4: Seven models (yin/yang modulated)
+    // LAYER 4: Seven models (yin/yang modulated) — each model's stream fires inside encode()
     const streamSignal=this.pipeline.stream(input,SEMANTIC_MODELS,retrieved,yinDominance);
     if(streamSignal.unified.isDivergent){
       const tokens=tokenize(input);
@@ -295,12 +337,25 @@ export class ProjectUnknown {
         if(SEMANTIC_MODELS[modelId]?.vault)
           SEMANTIC_MODELS[modelId].vault.learnFromDivergence(input,tokens,streamSignal.unified.divergence);
     }
+    // Processing component fires
+    this.processingStream.fire({
+      score: streamSignal.unified.avgScore,
+      signal: streamSignal.unified.unifiedSignal,
+      divergence: streamSignal.unified.divergence,
+      model:"processing"
+    });
 
     // LAYER 5: Bio layer
     const bioSignal=this.bioLayer.process(input,streamSignal.modelOutputs,streamSignal.unified,retrieved);
     for(const[modelId,adjustedScore]of Object.entries(bioSignal.modelAdjustments))
       if(SEMANTIC_MODELS[modelId]?.vault)
         SEMANTIC_MODELS[modelId].vault.applyBioAdjustment(adjustedScore);
+    // Bio component fires
+    this.bioStream.fire({
+      score: bioSignal.corticalDepth || 0.5,
+      signal: bioSignal.bioContextSummary,
+      model: bioSignal.cellType || "bio"
+    });
 
     // LAYER 6: Feedback-forward
     const recentLoops=this.vault.recent(20);
@@ -308,10 +363,16 @@ export class ProjectUnknown {
     const feedbackSignal=buildFeedbackSignal(retrieved,pattern);
     const bioAvgScore=roundN(Object.values(bioSignal.modelAdjustments).reduce((s,v)=>s+v,0)/Math.max(Object.keys(bioSignal.modelAdjustments).length,1));
     const forwardScore=forwardAdjustedScore(bioAvgScore,retrieved,pattern);
+    // Feedback component fires
+    this.feedbackStream.fire({
+      score: forwardScore,
+      signal: feedbackSignal || "none",
+      model: "feedback"
+    });
 
     // Resolve + seal into main vault
     const resolution=[
-      `v0.9.0. Arbitration:${arbitrationResult.gate.gate}.`,
+      `v1.0.0. Arbitration:${arbitrationResult.gate.gate}.`,
       `Dominant:${streamSignal.unified.dominantModel}. Score:${forwardScore}.`,
       streamSignal.unified.unifiedSignal,
       `Bio:${bioSignal.bioContextSummary}`,
@@ -323,8 +384,17 @@ export class ProjectUnknown {
     this.vault.store(entry);
     this.runtime.complete(telemetryRecord,"ok");
 
-    // Build base result
-    const result={
+    // Vault component fires
+    this.vaultStream.fire({
+      score: entry.meaningScore,
+      signal: resolution.slice(0,100),
+      tension: entry.tensionScore,
+      divergence: entry.divergence,
+      model: "vault"
+    });
+
+    // Build result for top-level continuum
+    const baseResult={
       identity:this.identity,
       agentSignal:{
         arbitration:arbitrationResult.gate.gate,
@@ -364,10 +434,31 @@ export class ProjectUnknown {
       vault:this.vault.summary()
     };
 
-    // LAYER 7: CONTINUUM
-    // Every think() result flows through the continuum.
-    // First call = spark. Every close = seal + probe + absorb + feed back.
-    return this.continuum.flow(result);
+    // LAYER 7: Top-level Continuum (think() level)
+    const continuumResult = this.continuum.flow(baseResult);
+    // Continuum component fires
+    this.continuumStream.fire({
+      score: continuumResult.continuumEvent?.probeFinding?.signalStrength || 0,
+      signal: continuumResult.continuumEvent?.probeFinding?.summary || "continuum",
+      model: "continuum"
+    });
+
+    // LAYER 8: MasterVault snapshot
+    // Capture the entire system's existence at this exact moment
+    const masterSnapshot = this.masterVault.snapshot(
+      continuumResult.continuumEvent?.loopNumber || 1,
+      input
+    );
+
+    return {
+      ...continuumResult,
+      masterSnapshot: {
+        snapshotNumber:  masterSnapshot.snapshotNumber,
+        capturedAt:      masterSnapshot.capturedAt,
+        systemSummary:   masterSnapshot.systemSummary,
+        // Full snapshot available via agent.masterVault.latest()
+      }
+    };
   }
 
   status(){
@@ -378,8 +469,24 @@ export class ProjectUnknown {
       vault:this.vault.summary(),
       processing:this.processingVault.summary(),
       bio:this.bioVault.summary(),
-      continuum:this.continuum.status()
+      continuum:this.continuum.status(),
+      master:this.masterVault.now()
     };
+  }
+
+  // Full existence of the whole system at this exact moment
+  existence() {
+    return this.masterVault.now();
+  }
+
+  // Complete trace of a single component's existence over time
+  componentTrace(componentId, last = 20) {
+    return this.masterVault.componentTrace(componentId, last);
+  }
+
+  // Latest full master snapshot — everything at once
+  masterSnapshot() {
+    return this.masterVault.latest();
   }
 
   corticalMap(){
@@ -409,8 +516,16 @@ export class ProjectUnknown {
     this.bioVault.registry=new(Object.getPrototypeOf(this.bioVault.registry).constructor)();this.bioVault.save();
     this.arbitration.state.history=[];this.arbitration.state.totalDecisions=0;this.arbitration.state.avgYinDominance=0.5;
     this.continuum=new Continuum();
-    for(const model of Object.values(SEMANTIC_MODELS))
+    this.masterVault=new MasterVault();
+    // Reset all component streams
+    for(const id of["runtime","arbitration","processing","bio","feedback","vault","continuum"]){
+      const streamKey=id==="vault"?"vaultStream":id==="continuum"?"continuumStream":`${id}Stream`;
+      if(this[streamKey]){this[streamKey]=new ComponentStream(id);this[streamKey].masterVault=this.masterVault;}
+    }
+    for(const model of Object.values(SEMANTIC_MODELS)){
       if(model.vault){model.vault.entries=[];model.vault.learnedTerms=new Map();model.vault.totalScored=0;model.vault.save();}
+      if(model.stream){model.stream=new ComponentStream(model.id);model.stream.masterVault=this.masterVault;}
+    }
     return this.status();
   }
 }
