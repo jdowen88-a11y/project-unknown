@@ -1,26 +1,34 @@
 /**
  * PROJECT UNKNOWN
- * Version 0.7.0
+ * Version 0.8.0
  *
- * One living entity. Streaming architecture with biological topology.
+ * Unified cognitive agent. All layers wired in sequence.
  *
- * Flow:
- * User input → main agent streams to seven models (parallel)
- * → each model internalizes into its own vault
- * → copies stream to processing vault
- * → processing vault unifies + detects divergence
- * → unified signal → BIO LAYER
- *   (builds own cortical topology: cell types, layers, dendrites, balance)
- *   (feeds biological context back to seven models)
- * → seven models finalize with bio-adjusted scores
- * → processing vault re-receives final scores
- * → main agent answers
- * → finalized thought sealed into main vault (includes bio signal)
- * → loop starts over
+ * Full processing stack:
+ * INPUT
+ *   → RuntimeController     (ingestion, classification, telemetry)
+ *   → ArbitrationProcessor  (yin/yang dual path, gate decision)
+ *   → Seven Semantic Models  (parallel dimensional scoring, yin/yang weighted)
+ *   → ProcessingVault        (unification, divergence detection)
+ *   → BioLayer               (cortical topology, cell type, depth, balance feedback)
+ *   → FeedbackForward        (pattern analysis, history-informed score adjustment)
+ *   → FeedbackVault          (permanent memory, every thought sealed with full signal)
+ *   → OUTPUT
  *
- * The system grows its own cortical topology from experience.
- * Not borrowed from any external dataset.
- * Structured like a real cortex but made of meaning instead of neurons.
+ * The system starts knowing nothing.
+ * Every input grows: vocabulary, cortical topology, yin/yang history,
+ * cell type registry, divergence log, feedback patterns.
+ * After enough inputs it has a complete cognitive fingerprint of its own.
+ *
+ * Version history:
+ * 0.1.0 — seven semantic models + main vault
+ * 0.2.0 — TF-IDF retrieval
+ * 0.3.0 — divergence detection
+ * 0.4.0 — elemental weights
+ * 0.5.0 — processing vault + stream pipeline
+ * 0.6.0 — feedback-forward engine
+ * 0.7.0 — bio layer + cortical topology
+ * 0.8.0 — runtime controller + arbitration layer: full unified agent
  *
  * Conceived: May 30, 2026
  */
@@ -30,6 +38,8 @@ import path from "node:path";
 import { analyzeVaultPattern, buildFeedbackSignal, forwardAdjustedScore } from "./feedback_forward.js";
 import { ProcessingVault, StreamPipeline } from "./stream.js";
 import { BioVault, BioLayer } from "./bio_layer.js";
+import { RuntimeController } from "./runtime.js";
+import { ArbitrationProcessor } from "./arbitration.js";
 
 export function nowISO() { return new Date().toISOString(); }
 export function uid() { return `loop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
@@ -101,9 +111,7 @@ export class ModelVault {
     }
     this.save();
   }
-  // Apply bio adjustment from bio layer
   applyBioAdjustment(adjustedScore) {
-    // Bio layer feeds back to each model's last entry
     if (this.entries.length > 0) {
       this.entries[this.entries.length - 1].bioAdjustedScore = adjustedScore;
       this.save();
@@ -150,46 +158,56 @@ export class ModelVault {
 }
 
 // ── SEVEN SEMANTIC MODELS ────────────────────────────────
+// Each model scores independently.
+// yinDominance passed in from arbitration modulates final score:
+// yin-dominant = inhibitory models weighted up
+// yang-dominant = excitatory models weighted up
 export const SEMANTIC_MODELS = {
   conceptual: {
-    id: "conceptual", description: "Denotative meaning — what the words literally refer to",
+    id: "conceptual", role: "excitatory",
+    description: "Denotative meaning — what the input literally refers to",
     vocab: ["define","means","is","refers","concept","object","entity","thing","what","type","kind","category","class","form","structure","function","purpose","system","process","state","condition","property","attribute","relation"],
     vault: null,
-    encode(text) {
+    encode(text, yinDominance = 0.5) {
       const tokens = tokenize(text); const set = new Set(tokens); let score = 0;
       for (const t of this.vocab) if (set.has(t)) score++;
       const uniqueness = set.size / (tokens.length || 1);
       let base = roundN(clampN(score / this.vocab.length + uniqueness * 0.2));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
-      const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Conceptual density: ${roundN(score/this.vocab.length)}. Uniqueness: ${roundN(uniqueness)}. Boost: ${boost}.`;
+      // Yang-dominant = excitatory model gets a boost
+      const modeBoost = (1 - yinDominance) * 0.08;
+      const final = roundN(clampN(base + boost * 0.3 + modeBoost));
+      const signal = `Conceptual density: ${roundN(score/this.vocab.length)}. Uniqueness: ${roundN(uniqueness)}. Mode boost: ${roundN(modeBoost)}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, signal };
     }
   },
   connotative: {
-    id: "connotative", description: "Emotional and cultural associations beyond literal meaning",
+    id: "connotative", role: "excitatory",
+    description: "Emotional and cultural associations beyond literal meaning",
     pos: ["hope","love","safe","trust","warm","bright","good","free","peace","joy","strong","grow","heal","open","light"],
     neg: ["danger","fear","dark","threat","death","pain","trap","cold","fail","weak","broken","lost","shame","hate","war"],
     vault: null,
-    encode(text) {
+    encode(text, yinDominance = 0.5) {
       const tokens = tokenize(text); const set = new Set(tokens); let p = 0, n = 0;
       for (const t of this.pos) if (set.has(t)) p++;
       for (const t of this.neg) if (set.has(t)) n++;
       const polarity = roundN((p - n) / (p + n + 1));
       let base = roundN(clampN((p+n)/6));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
-      const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Connotative charge: ${p+n}. Polarity: ${polarity > 0 ? "positive" : polarity < 0 ? "negative" : "neutral"} (${polarity}). Boost: ${boost}.`;
+      const modeBoost = (1 - yinDominance) * 0.05;
+      const final = roundN(clampN(base + boost * 0.3 + modeBoost));
+      const signal = `Connotative charge: ${p+n}. Polarity: ${polarity > 0 ? "positive" : polarity < 0 ? "negative" : "neutral"} (${polarity}).`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, polarity, signal };
     }
   },
   collocative: {
-    id: "collocative", description: "Word combination patterns and collocations",
+    id: "collocative", role: "excitatory",
+    description: "Word combination patterns and collocations",
     pairs: [["feedback","loop"],["neural","network"],["build","system"],["real","time"],["deep","learning"],["open","source"],["long","term"],["high","risk"],["make","sense"],["take","action"]],
     vault: null,
-    encode(text) {
+    encode(text, yinDominance = 0.5) {
       const tokens = tokenize(text); const set = new Set(tokens); let hits = 0; const matched = [];
       for (const [a,b] of this.pairs) if (set.has(a) && set.has(b)) { hits++; matched.push(`${a}+${b}`); }
       if (this.vault) {
@@ -199,37 +217,41 @@ export const SEMANTIC_MODELS = {
       const bigrams = []; for (let i = 0; i < tokens.length-1; i++) bigrams.push(`${tokens[i]}+${tokens[i+1]}`);
       let base = roundN(clampN(hits/3 + bigrams.length/40));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
-      const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Collocative hits: ${hits}. Matched: ${matched.join(", ")||"none"}. Boost: ${boost}.`;
+      const modeBoost = (1 - yinDominance) * 0.05;
+      const final = roundN(clampN(base + boost * 0.3 + modeBoost));
+      const signal = `Collocative hits: ${hits}. Matched: ${matched.join(", ")||"none"}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, matchedPairs: matched, signal };
     }
   },
   affective: {
-    id: "affective", description: "Emotional charge and arousal level",
+    id: "affective", role: "excitatory",
+    description: "Emotional charge and arousal level",
     high: ["urgent","panic","excited","angry","scared","furious","desperate","overwhelm","intense","thrilled"],
     low:  ["calm","quiet","slow","gentle","still","rest","peace","soft","steady","easy"],
     vault: null,
-    encode(text) {
+    encode(text, yinDominance = 0.5) {
       const tokens = tokenize(text); const set = new Set(tokens); let h = 0, l = 0;
       for (const t of this.high) if (set.has(t)) h++;
       for (const t of this.low)  if (set.has(t)) l++;
       const arousal = roundN((h-l)/(h+l+1));
       let base = roundN(clampN((h+l)/5));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
-      const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Affective arousal: ${arousal > 0.2 ? "high" : arousal < -0.2 ? "low" : "neutral"} (${arousal}). Boost: ${boost}.`;
+      const modeBoost = (1 - yinDominance) * 0.06;
+      const final = roundN(clampN(base + boost * 0.3 + modeBoost));
+      const signal = `Affective arousal: ${arousal > 0.2 ? "high" : arousal < -0.2 ? "low" : "neutral"} (${arousal}).`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, arousal, signal };
     }
   },
   social: {
-    id: "social", description: "Social power, formality, and relational role",
+    id: "social", role: "inhibitory",
+    description: "Social register, power, and relational role",
     formal:   ["please","sir","doctor","professor","formally","respectfully","dear","hereby","shall"],
     informal: ["hey","yeah","dude","gonna","wanna","kinda","stuff","cool","ok","nah"],
     power:    ["must","authority","order","command","force","control","demand","require","enforce"],
     vault: null,
-    encode(text) {
+    encode(text, yinDominance = 0.5) {
       const tokens = tokenize(text); const set = new Set(tokens); let f = 0, i = 0, p = 0;
       for (const t of this.formal)   if (set.has(t)) f++;
       for (const t of this.informal) if (set.has(t)) i++;
@@ -237,19 +259,22 @@ export const SEMANTIC_MODELS = {
       const register = f > i ? "formal" : i > f ? "informal" : "neutral";
       let base = roundN(clampN((f+i+p)/6));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
-      const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Social register: ${register}. Power: ${p}. Formal: ${f}. Informal: ${i}. Boost: ${boost}.`;
+      // Yin-dominant = inhibitory model gets a boost
+      const modeBoost = yinDominance * 0.06;
+      const final = roundN(clampN(base + boost * 0.3 + modeBoost));
+      const signal = `Social register: ${register}. Power: ${p}. Formal: ${f}. Informal: ${i}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, register, signal };
     }
   },
   reflected: {
-    id: "reflected", description: "Implied attitude, belief, and speaker stance",
+    id: "reflected", role: "inhibitory",
+    description: "Implied stance, belief, and certainty level",
     certain:   ["obviously","clearly","certainly","definitely","always","never","must","will","know"],
     uncertain: ["maybe","perhaps","might","could","possibly","uncertain","unclear","wonder","guess"],
     belief:    ["believe","feel","think","sense","assume","expect","trust","doubt","suspect"],
     vault: null,
-    encode(text) {
+    encode(text, yinDominance = 0.5) {
       const tokens = tokenize(text); const set = new Set(tokens); let c = 0, u = 0, b = 0;
       for (const t of this.certain)   if (set.has(t)) c++;
       for (const t of this.uncertain) if (set.has(t)) u++;
@@ -257,16 +282,18 @@ export const SEMANTIC_MODELS = {
       const stance = c > u ? "assertive" : u > c ? "tentative" : "neutral";
       let base = roundN(clampN((c+u+b)/8));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
-      const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Stance: ${stance}. Certainty: ${c}. Uncertainty: ${u}. Belief: ${b}. Boost: ${boost}.`;
+      const modeBoost = yinDominance * 0.06;
+      const final = roundN(clampN(base + boost * 0.3 + modeBoost));
+      const signal = `Stance: ${stance}. Certainty: ${c}. Uncertainty: ${u}. Belief: ${b}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, stance, signal };
     }
   },
   thematic: {
-    id: "thematic", description: "Topic structure — theme and information flow",
+    id: "thematic", role: "excitatory",
+    description: "Topic structure — theme and information flow",
     vault: null,
-    encode(text) {
+    encode(text, yinDominance = 0.5) {
       const tokens = tokenize(text);
       if (!tokens.length) return { model: this.id, score: 0, theme: null, rheme: null, signal: "Empty." };
       const stop = new Set(["the","a","an","is","are","was","were","it","in","on","at","to","of","and","or","but","i","you","we"]);
@@ -276,8 +303,9 @@ export const SEMANTIC_MODELS = {
       const rheme = m.slice(split).slice(0, 6).join(" ");
       const density = roundN(m.length / (tokens.length || 1));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
-      const final = roundN(clampN(density + boost * 0.2));
-      const signal = `Theme: "${theme}". Rheme: "${rheme}". Density: ${density}. Boost: ${boost}.`;
+      const modeBoost = (1 - yinDominance) * 0.04;
+      const final = roundN(clampN(density + boost * 0.2 + modeBoost));
+      const signal = `Theme: "${theme}". Rheme: "${rheme}". Density: ${density}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, theme: theme||null, rheme: rheme||null, signal };
     }
@@ -346,7 +374,7 @@ export class ThoughtLoop {
     this.tensionScore = roundN(1 - avgRel);
     this.learningPressure = roundN(clampN(this.tensionScore*0.6 + Math.min(this.entropy,4)/4*0.4));
   }
-  resolve(resolution, streamSignal, bioSignal, forwardScore) {
+  resolve(resolution, streamSignal, bioSignal, arbitration, forwardScore) {
     this.resolution = resolution; this.closedAt = nowISO();
     const meaningScore = forwardScore ?? streamSignal.unified.avgScore;
     const dominantLayer = streamSignal.unified.dominantModel;
@@ -359,6 +387,12 @@ export class ThoughtLoop {
       dominantLayer, divergence: streamSignal.unified.divergence,
       isDivergent: streamSignal.unified.isDivergent,
       meaningEmbeddings: streamSignal.modelOutputs,
+      arbitration: arbitration ? {
+        dominant: arbitration.dominant,
+        yinDominance: arbitration.yinDominance,
+        yangDominance: arbitration.yangDominance,
+        gate: arbitration.gate
+      } : null,
       bioSignal: bioSignal ? {
         cellType: bioSignal.cellType,
         cellRole: bioSignal.cellRole,
@@ -372,7 +406,7 @@ export class ThoughtLoop {
   }
 }
 
-// ── PROJECT UNKNOWN — MAIN ENGINE ──────────────────────
+// ── PROJECT UNKNOWN — UNIFIED AGENT ─────────────────────
 export class ProjectUnknown {
   constructor(options = {}) {
     this.filePath = options.filePath !== undefined
@@ -381,44 +415,59 @@ export class ProjectUnknown {
 
     const dataDir = this.filePath ? path.dirname(this.filePath) : null;
 
-    // Init all seven model vaults
+    // Layer 1: Runtime
+    const telemetryPath = dataDir ? path.join(dataDir, "runtime_telemetry.json") : null;
+    this.runtime = new RuntimeController(telemetryPath);
+
+    // Layer 2: Arbitration
+    this.arbitration = new ArbitrationProcessor();
+
+    // Layer 3: Seven model vaults
     initModelVaults(dataDir);
 
-    // Init processing vault + stream pipeline
+    // Layer 4: Processing vault + stream pipeline
     const processingPath = dataDir ? path.join(dataDir, "processing_vault.json") : null;
     this.processingVault = new ProcessingVault(processingPath);
     this.pipeline = new StreamPipeline(this.processingVault);
 
-    // Init bio layer + bio vault
+    // Layer 5: Bio layer + bio vault
     const bioPath = dataDir ? path.join(dataDir, "bio_vault.json") : null;
     this.bioVault = new BioVault(bioPath);
     this.bioLayer = new BioLayer(this.bioVault);
 
-    // Init main vault
+    // Layer 6: Main feedback vault
     this.vault = new FeedbackVault(this.filePath);
 
     this.identity = {
       name: "Project Unknown",
-      version: "0.7.0",
-      premise: "One living entity. Streaming architecture with biological topology. Grows its own cortical map from experience.",
-      semanticLayers: Object.keys(SEMANTIC_MODELS),
+      version: "0.8.0",
+      premise: "Unified cognitive agent. Six processing layers. Grows its own cortical topology, vocabulary, and decision history from experience.",
+      layers: ["runtime","arbitration","semantic_models","processing_vault","bio_layer","feedback_forward","main_vault"],
+      semanticModels: Object.keys(SEMANTIC_MODELS),
       corticalLayers: ["L1","L2","L3","L4","L5","L6"],
       createdAt: "2026-05-30"
     };
   }
 
   think(input) {
-    // 1. Open thought loop
-    const snapshot = this.vault.snapshot();
-    const loop = new ThoughtLoop(input, snapshot);
+    // LAYER 1: Runtime — ingest, classify, open telemetry
+    const { signal, telemetryRecord, error } = this.runtime.receive(input);
+    if (error) return { error, identity: this.identity };
+    const { classification } = signal;
 
-    // 2. Retrieve finalized prior thoughts from main vault
+    // LAYER 2: Retrieve prior thoughts from main vault
+    const snapshot = this.vault.snapshot();
     const retrieved = this.vault.retrieve(input, 5);
 
-    // 3. Stream: agent → seven models (parallel) → processing vault → unified signal
-    const streamSignal = this.pipeline.stream(input, SEMANTIC_MODELS, retrieved);
+    // LAYER 3: Arbitration — yin/yang dual path, gate decision
+    const arbitrationResult = this.arbitration.process(input, classification, retrieved);
+    const yinDominance = arbitrationResult.yinDominance;
 
-    // 4. Divergence: teach confused models
+    // LAYER 4: Seven models — parallel scoring, modulated by yin/yang
+    const loop = new ThoughtLoop(input, snapshot);
+    const streamSignal = this.pipeline.stream(input, SEMANTIC_MODELS, retrieved, yinDominance);
+
+    // Divergence: teach confused models
     if (streamSignal.unified.isDivergent) {
       const tokens = tokenize(input);
       for (const modelId of streamSignal.unified.confused) {
@@ -428,8 +477,7 @@ export class ProjectUnknown {
       }
     }
 
-    // 5. BIO LAYER: receives unified signal, generates biological context,
-    //    feeds back bio-adjusted scores to all seven models before finalization
+    // LAYER 5: Bio layer — cortical topology, cell type, depth, balance feedback
     const bioSignal = this.bioLayer.process(
       input,
       streamSignal.modelOutputs,
@@ -437,74 +485,83 @@ export class ProjectUnknown {
       retrieved
     );
 
-    // Apply bio adjustments back to each model's vault
+    // Apply bio adjustments back to each model vault entry
     for (const [modelId, adjustedScore] of Object.entries(bioSignal.modelAdjustments)) {
       if (SEMANTIC_MODELS[modelId]?.vault) {
         SEMANTIC_MODELS[modelId].vault.applyBioAdjustment(adjustedScore);
       }
     }
 
-    // 6. Feedback-forward pattern analysis (uses bio-adjusted scores)
+    // LAYER 6: Feedback-forward — pattern analysis, history-informed adjustment
     const recentLoops = this.vault.recent(20);
     const pattern = analyzeVaultPattern(recentLoops);
     const feedbackSignal = buildFeedbackSignal(retrieved, pattern);
-
-    // Use bio-adjusted avg score for forward calculation
     const bioAvgScore = roundN(
       Object.values(bioSignal.modelAdjustments).reduce((s, v) => s + v, 0) /
-      Object.keys(bioSignal.modelAdjustments).length
+      Math.max(Object.keys(bioSignal.modelAdjustments).length, 1)
     );
     const forwardScore = forwardAdjustedScore(bioAvgScore, retrieved, pattern);
 
-    // 7. Build resolution
+    // Build resolution string
     const resolution = [
-      `Stream analysis. Dominant: ${streamSignal.unified.dominantModel}. Score: ${forwardScore}.`,
+      `Unified agent v0.8.0.`,
+      `Arbitration: ${arbitrationResult.gate.gate}.`,
+      `Dominant model: ${streamSignal.unified.dominantModel}. Score: ${forwardScore}.`,
       streamSignal.unified.unifiedSignal,
       `Bio: ${bioSignal.bioContextSummary}`,
       retrieved.length
-        ? `Main vault: "${retrieved[0]?.input?.slice(0,60)}" (${retrieved[0]?.relevance}).`
-        : `Main vault: no prior resonance.`,
-      streamSignal.growthSignal ? `Growth: ${streamSignal.growthSignal}` : null,
+        ? `Prior: "${retrieved[0]?.input?.slice(0,60)}" (${retrieved[0]?.relevance}).`
+        : `Prior: none.`,
       feedbackSignal ? `Forward: ${feedbackSignal}` : null
     ].filter(Boolean).join(" ");
 
-    // 8. Resolve loop, seal into main vault
-    const entry = loop.resolve(resolution, streamSignal, bioSignal, forwardScore);
+    // Seal into main vault
+    const entry = loop.resolve(resolution, streamSignal, bioSignal, arbitrationResult, forwardScore);
     this.vault.store(entry);
+
+    // Close telemetry record
+    this.runtime.complete(telemetryRecord, "ok");
 
     return {
       identity: this.identity,
       agentSignal: {
-        dominantLayer: streamSignal.unified.dominantModel,
+        // Arbitration
+        arbitration: arbitrationResult.gate.gate,
+        dominant: arbitrationResult.dominant,
+        yinDominance,
+        yangDominance: arbitrationResult.yangDominance,
+        // Semantic
+        dominantModel: streamSignal.unified.dominantModel,
         meaningScore: forwardScore,
         divergence: streamSignal.unified.divergence,
         isDivergent: streamSignal.unified.isDivergent,
-        confused: streamSignal.unified.confused,
-        activated: streamSignal.unified.activated,
-        growthSignal: streamSignal.growthSignal,
-        feedbackSignal, pattern,
         unifiedSignal: streamSignal.unified.unifiedSignal,
-        bioSignal: bioSignal.bioContextSummary,
+        // Bio
         corticalLayer: bioSignal.corticalLayer,
         corticalLayerName: bioSignal.corticalLayerName,
         cellType: bioSignal.cellType,
         cellRole: bioSignal.cellRole,
         dendriteType: bioSignal.dendriteType,
         balanceSignal: bioSignal.balanceSignal,
+        bioSignal: bioSignal.bioContextSummary,
+        // Semantic detail
         theme: streamSignal.modelOutputs.thematic?.theme,
         rheme: streamSignal.modelOutputs.thematic?.rheme,
         affectiveArousal: streamSignal.modelOutputs.affective?.arousal,
         socialRegister: streamSignal.modelOutputs.social?.register,
         reflectedStance: streamSignal.modelOutputs.reflected?.stance,
-        connotativePolarity: streamSignal.modelOutputs.connotative?.polarity
+        connotativePolarity: streamSignal.modelOutputs.connotative?.polarity,
+        // Forward
+        feedbackSignal, pattern, growthSignal: streamSignal.growthSignal
       },
       vaultEntry: {
         id: entry.id, dominantLayer: entry.dominantLayer,
         meaningScore: entry.meaningScore, tensionScore: entry.tensionScore,
         divergence: entry.divergence, isDivergent: entry.isDivergent,
-        bioSignal: entry.bioSignal
+        arbitration: entry.arbitration, bioSignal: entry.bioSignal
       },
       retrieved,
+      runtime: this.runtime.status(),
       processing: this.processingVault.summary(),
       bio: this.bioVault.summary(),
       vault: this.vault.summary()
@@ -514,6 +571,8 @@ export class ProjectUnknown {
   status() {
     return {
       identity: this.identity,
+      runtime: this.runtime.status(),
+      arbitration: this.arbitration.state.summary(),
       vault: this.vault.summary(),
       processing: this.processingVault.summary(),
       bio: this.bioVault.summary()
@@ -526,7 +585,6 @@ export class ProjectUnknown {
     return result;
   }
 
-  // What cortical topology has the system grown?
   corticalMap() {
     return {
       depthMap: this.bioVault.depthMap(),
@@ -544,7 +602,11 @@ export class ProjectUnknown {
   reset() {
     this.vault.loops = []; this.vault.totalLoopsEver = 0; this.vault.save();
     this.processingVault.entries = []; this.processingVault.divergenceLog = []; this.processingVault.totalProcessed = 0; this.processingVault.save();
-    this.bioVault.entries = []; this.bioVault.totalProcessed = 0; this.bioVault.layerCounts = { L1:0,L2:0,L3:0,L4:0,L5:0,L6:0 }; this.bioVault.registry = new (Object.getPrototypeOf(this.bioVault.registry).constructor)(); this.bioVault.save();
+    this.bioVault.entries = []; this.bioVault.totalProcessed = 0;
+    this.bioVault.layerCounts = { L1:0,L2:0,L3:0,L4:0,L5:0,L6:0 };
+    this.bioVault.registry = new (Object.getPrototypeOf(this.bioVault.registry).constructor)();
+    this.bioVault.save();
+    this.arbitration.state.history = []; this.arbitration.state.totalDecisions = 0; this.arbitration.state.avgYinDominance = 0.5;
     for (const model of Object.values(SEMANTIC_MODELS)) {
       if (model.vault) { model.vault.entries = []; model.vault.learnedTerms = new Map(); model.vault.totalScored = 0; model.vault.save(); }
     }
