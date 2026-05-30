@@ -1,21 +1,26 @@
 /**
  * PROJECT UNKNOWN
- * Version 0.6.0
+ * Version 0.7.0
  *
- * One living entity. Streaming architecture.
+ * One living entity. Streaming architecture with biological topology.
  *
  * Flow:
  * User input → main agent streams to seven models (parallel)
  * → each model internalizes into its own vault
  * → copies stream to processing vault
- * → processing vault interprets seven into one + detects divergence
- * → processing vault compares with main vault finalized thoughts
- * → unified stream back to main agent
- * → agent answers user
- * → finalized thought sealed into main vault
+ * → processing vault unifies + detects divergence
+ * → unified signal → BIO LAYER
+ *   (builds own cortical topology: cell types, layers, dendrites, balance)
+ *   (feeds biological context back to seven models)
+ * → seven models finalize with bio-adjusted scores
+ * → processing vault re-receives final scores
+ * → main agent answers
+ * → finalized thought sealed into main vault (includes bio signal)
  * → loop starts over
  *
- * Divergence — where models disagree — is where new understanding grows.
+ * The system grows its own cortical topology from experience.
+ * Not borrowed from any external dataset.
+ * Structured like a real cortex but made of meaning instead of neurons.
  *
  * Conceived: May 30, 2026
  */
@@ -24,6 +29,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { analyzeVaultPattern, buildFeedbackSignal, forwardAdjustedScore } from "./feedback_forward.js";
 import { ProcessingVault, StreamPipeline } from "./stream.js";
+import { BioVault, BioLayer } from "./bio_layer.js";
 
 export function nowISO() { return new Date().toISOString(); }
 export function uid() { return `loop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
@@ -65,95 +71,72 @@ export const globalTFIDF = new TFIDF();
 // ── MODEL VAULT ────────────────────────────────────────────
 export class ModelVault {
   constructor(modelId, filePath) {
-    this.modelId = modelId;
-    this.filePath = filePath;
-    this.entries = [];
-    this.learnedTerms = new Map();
-    this.tfidf = new TFIDF();
-    this.totalScored = 0;
+    this.modelId = modelId; this.filePath = filePath;
+    this.entries = []; this.learnedTerms = new Map();
+    this.tfidf = new TFIDF(); this.totalScored = 0;
     this.load();
   }
-
   store(input, score, tokens, signal) {
     const entry = { id: uid(), input, score, tokens, signal, scoredAt: nowISO() };
-    this.entries.push(entry);
-    this.totalScored++;
+    this.entries.push(entry); this.totalScored++;
     this.tfidf.addDocument(input);
     if (score > 0.3) {
       for (const term of new Set(tokens)) {
         if (term.length < 3) continue;
-        const existing = this.learnedTerms.get(term) || { score: 0, count: 0, weight: 0 };
-        existing.count++;
-        existing.score = roundN((existing.score * (existing.count - 1) + score) / existing.count);
-        existing.weight = roundN(clampN(existing.score * Math.log(existing.count + 1) / 3));
-        this.learnedTerms.set(term, existing);
+        const e = this.learnedTerms.get(term) || { score: 0, count: 0, weight: 0 };
+        e.count++;
+        e.score = roundN((e.score * (e.count - 1) + score) / e.count);
+        e.weight = roundN(clampN(e.score * Math.log(e.count + 1) / 3));
+        this.learnedTerms.set(term, e);
       }
     }
-    // Also learn from divergence: store terms from confused states
-    // so the model can recognize them as frontier signals
-    this.save();
-    return entry;
+    this.save(); return entry;
   }
-
-  // Called by processing vault when this model was flagged as confused
-  // Stores the divergence context so the model learns its own blind spots
   learnFromDivergence(input, tokens, divergence) {
     for (const term of new Set(tokens)) {
       if (term.length < 3) continue;
-      const existing = this.learnedTerms.get(term) || { score: 0, count: 0, weight: 0, frontier: 0 };
-      existing.frontier = (existing.frontier || 0) + divergence;
-      this.learnedTerms.set(term, existing);
+      const e = this.learnedTerms.get(term) || { score: 0, count: 0, weight: 0, frontier: 0 };
+      e.frontier = (e.frontier || 0) + divergence;
+      this.learnedTerms.set(term, e);
     }
     this.save();
   }
-
+  // Apply bio adjustment from bio layer
+  applyBioAdjustment(adjustedScore) {
+    // Bio layer feeds back to each model's last entry
+    if (this.entries.length > 0) {
+      this.entries[this.entries.length - 1].bioAdjustedScore = adjustedScore;
+      this.save();
+    }
+  }
   evolvedVocab(n = 30) {
     return [...this.learnedTerms.entries()]
       .sort((a, b) => b[1].weight - a[1].weight)
-      .slice(0, n)
-      .map(([term, data]) => ({ term, ...data }));
+      .slice(0, n).map(([term, data]) => ({ term, ...data }));
   }
-
   learnedBoost(tokens) {
     if (!this.learnedTerms.size) return 0;
-    const set = new Set(tokens);
-    let boost = 0;
-    for (const [term, data] of this.learnedTerms) {
-      if (set.has(term)) boost += data.weight;
-    }
+    const set = new Set(tokens); let boost = 0;
+    for (const [term, data] of this.learnedTerms) if (set.has(term)) boost += data.weight;
     return roundN(clampN(boost / 5));
   }
-
   retrieve(input, count = 3) {
     return [...this.entries]
       .map(e => ({ ...e, relevance: roundN(this.tfidf.similarity(input, e.input)) }))
-      .filter(e => e.relevance > 0)
-      .sort((a, b) => b.relevance - a.relevance)
-      .slice(0, count);
+      .filter(e => e.relevance > 0).sort((a, b) => b.relevance - a.relevance).slice(0, count);
   }
-
   summary() {
     const avgScore = this.entries.length
       ? roundN(this.entries.reduce((s, e) => s + e.score, 0) / this.entries.length) : 0;
-    return {
-      modelId: this.modelId, totalScored: this.totalScored, avgScore,
-      evolvedTerms: this.learnedTerms.size,
-      topTerms: this.evolvedVocab(5).map(t => t.term)
-    };
+    return { modelId: this.modelId, totalScored: this.totalScored, avgScore, evolvedTerms: this.learnedTerms.size, topTerms: this.evolvedVocab(5).map(t => t.term) };
   }
-
   save() {
     if (!this.filePath) return;
     try {
       mkdirSync(path.dirname(this.filePath), { recursive: true });
-      writeFileSync(this.filePath, JSON.stringify({
-        savedAt: nowISO(), modelId: this.modelId, totalScored: this.totalScored,
-        learnedTerms: Object.fromEntries(this.learnedTerms),
-        entries: this.entries.slice(-500)
-      }, null, 2));
+      writeFileSync(this.filePath, JSON.stringify({ savedAt: nowISO(), modelId: this.modelId, totalScored: this.totalScored, learnedTerms: Object.fromEntries(this.learnedTerms), entries: this.entries.slice(-500) }, null, 2));
     } catch {}
   }
-
   load() {
     if (!this.filePath || !existsSync(this.filePath)) return;
     try {
@@ -211,12 +194,9 @@ export const SEMANTIC_MODELS = {
       for (const [a,b] of this.pairs) if (set.has(a) && set.has(b)) { hits++; matched.push(`${a}+${b}`); }
       if (this.vault) {
         const evolved = this.vault.evolvedVocab(20).map(t => t.term);
-        for (let i = 0; i < tokens.length - 1; i++) {
-          if (evolved.includes(tokens[i]) && evolved.includes(tokens[i+1])) hits += 0.5;
-        }
+        for (let i = 0; i < tokens.length - 1; i++) if (evolved.includes(tokens[i]) && evolved.includes(tokens[i+1])) hits += 0.5;
       }
-      const bigrams = [];
-      for (let i = 0; i < tokens.length-1; i++) bigrams.push(`${tokens[i]}+${tokens[i+1]}`);
+      const bigrams = []; for (let i = 0; i < tokens.length-1; i++) bigrams.push(`${tokens[i]}+${tokens[i+1]}`);
       let base = roundN(clampN(hits/3 + bigrams.length/40));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
       const final = roundN(clampN(base + boost * 0.3));
@@ -334,9 +314,7 @@ export class FeedbackVault {
     const layers = {};
     for (const l of this.loops) if (l.dominantLayer) layers[l.dominantLayer] = (layers[l.dominantLayer]||0)+1;
     const modelVaults = {};
-    for (const [key, model] of Object.entries(SEMANTIC_MODELS)) {
-      if (model.vault) modelVaults[key] = model.vault.summary();
-    }
+    for (const [key, model] of Object.entries(SEMANTIC_MODELS)) if (model.vault) modelVaults[key] = model.vault.summary();
     return { totalLoops: this.loops.length, totalLoopsEver: this.totalLoopsEver, avgTension: avg("tensionScore"), avgMeaningScore: avg("meaningScore"), dominantLayers: layers, modelVaults };
   }
   save() {
@@ -368,7 +346,7 @@ export class ThoughtLoop {
     this.tensionScore = roundN(1 - avgRel);
     this.learningPressure = roundN(clampN(this.tensionScore*0.6 + Math.min(this.entropy,4)/4*0.4));
   }
-  resolve(resolution, streamSignal, forwardScore) {
+  resolve(resolution, streamSignal, bioSignal, forwardScore) {
     this.resolution = resolution; this.closedAt = nowISO();
     const meaningScore = forwardScore ?? streamSignal.unified.avgScore;
     const dominantLayer = streamSignal.unified.dominantModel;
@@ -376,13 +354,20 @@ export class ThoughtLoop {
       id: this.id, input: this.input, resolution,
       openedAt: this.openedAt, closedAt: this.closedAt,
       inputEntropy: this.entropy, tensionScore: this.tensionScore, learningPressure: this.learningPressure,
-      resonantLoops: this.resonantLoops,
-      meaningScore,
+      resonantLoops: this.resonantLoops, meaningScore,
       baseMeaningScore: streamSignal.unified.avgScore,
-      dominantLayer,
-      divergence: streamSignal.unified.divergence,
+      dominantLayer, divergence: streamSignal.unified.divergence,
       isDivergent: streamSignal.unified.isDivergent,
-      meaningEmbeddings: streamSignal.modelOutputs
+      meaningEmbeddings: streamSignal.modelOutputs,
+      bioSignal: bioSignal ? {
+        cellType: bioSignal.cellType,
+        cellRole: bioSignal.cellRole,
+        corticalLayer: bioSignal.corticalLayer,
+        corticalLayerName: bioSignal.corticalLayerName,
+        corticalDepth: bioSignal.corticalDepth,
+        dendriteType: bioSignal.dendriteType,
+        balanceSignal: bioSignal.balanceSignal
+      } : null
     };
   }
 }
@@ -399,19 +384,25 @@ export class ProjectUnknown {
     // Init all seven model vaults
     initModelVaults(dataDir);
 
-    // Init processing vault
+    // Init processing vault + stream pipeline
     const processingPath = dataDir ? path.join(dataDir, "processing_vault.json") : null;
     this.processingVault = new ProcessingVault(processingPath);
     this.pipeline = new StreamPipeline(this.processingVault);
+
+    // Init bio layer + bio vault
+    const bioPath = dataDir ? path.join(dataDir, "bio_vault.json") : null;
+    this.bioVault = new BioVault(bioPath);
+    this.bioLayer = new BioLayer(this.bioVault);
 
     // Init main vault
     this.vault = new FeedbackVault(this.filePath);
 
     this.identity = {
       name: "Project Unknown",
-      version: "0.6.0",
-      premise: "One living entity. Agent streams to seven models. Each internalizes. Processing vault unifies. Divergence is where growth happens. Main vault seals finalized thoughts. Everything evolves as one.",
+      version: "0.7.0",
+      premise: "One living entity. Streaming architecture with biological topology. Grows its own cortical map from experience.",
       semanticLayers: Object.keys(SEMANTIC_MODELS),
+      corticalLayers: ["L1","L2","L3","L4","L5","L6"],
       createdAt: "2026-05-30"
     };
   }
@@ -427,7 +418,7 @@ export class ProjectUnknown {
     // 3. Stream: agent → seven models (parallel) → processing vault → unified signal
     const streamSignal = this.pipeline.stream(input, SEMANTIC_MODELS, retrieved);
 
-    // 4. If divergence detected, teach confused models from it
+    // 4. Divergence: teach confused models
     if (streamSignal.unified.isDivergent) {
       const tokens = tokenize(input);
       for (const modelId of streamSignal.unified.confused) {
@@ -437,16 +428,39 @@ export class ProjectUnknown {
       }
     }
 
-    // 5. Feedback-forward pattern analysis
+    // 5. BIO LAYER: receives unified signal, generates biological context,
+    //    feeds back bio-adjusted scores to all seven models before finalization
+    const bioSignal = this.bioLayer.process(
+      input,
+      streamSignal.modelOutputs,
+      streamSignal.unified,
+      retrieved
+    );
+
+    // Apply bio adjustments back to each model's vault
+    for (const [modelId, adjustedScore] of Object.entries(bioSignal.modelAdjustments)) {
+      if (SEMANTIC_MODELS[modelId]?.vault) {
+        SEMANTIC_MODELS[modelId].vault.applyBioAdjustment(adjustedScore);
+      }
+    }
+
+    // 6. Feedback-forward pattern analysis (uses bio-adjusted scores)
     const recentLoops = this.vault.recent(20);
     const pattern = analyzeVaultPattern(recentLoops);
     const feedbackSignal = buildFeedbackSignal(retrieved, pattern);
-    const forwardScore = forwardAdjustedScore(streamSignal.unified.avgScore, retrieved, pattern);
 
-    // 6. Build resolution
+    // Use bio-adjusted avg score for forward calculation
+    const bioAvgScore = roundN(
+      Object.values(bioSignal.modelAdjustments).reduce((s, v) => s + v, 0) /
+      Object.keys(bioSignal.modelAdjustments).length
+    );
+    const forwardScore = forwardAdjustedScore(bioAvgScore, retrieved, pattern);
+
+    // 7. Build resolution
     const resolution = [
       `Stream analysis. Dominant: ${streamSignal.unified.dominantModel}. Score: ${forwardScore}.`,
       streamSignal.unified.unifiedSignal,
+      `Bio: ${bioSignal.bioContextSummary}`,
       retrieved.length
         ? `Main vault: "${retrieved[0]?.input?.slice(0,60)}" (${retrieved[0]?.relevance}).`
         : `Main vault: no prior resonance.`,
@@ -454,8 +468,8 @@ export class ProjectUnknown {
       feedbackSignal ? `Forward: ${feedbackSignal}` : null
     ].filter(Boolean).join(" ");
 
-    // 7. Resolve loop, seal into main vault
-    const entry = loop.resolve(resolution, streamSignal, forwardScore);
+    // 8. Resolve loop, seal into main vault
+    const entry = loop.resolve(resolution, streamSignal, bioSignal, forwardScore);
     this.vault.store(entry);
 
     return {
@@ -468,9 +482,15 @@ export class ProjectUnknown {
         confused: streamSignal.unified.confused,
         activated: streamSignal.unified.activated,
         growthSignal: streamSignal.growthSignal,
-        feedbackSignal,
-        pattern,
+        feedbackSignal, pattern,
         unifiedSignal: streamSignal.unified.unifiedSignal,
+        bioSignal: bioSignal.bioContextSummary,
+        corticalLayer: bioSignal.corticalLayer,
+        corticalLayerName: bioSignal.corticalLayerName,
+        cellType: bioSignal.cellType,
+        cellRole: bioSignal.cellRole,
+        dendriteType: bioSignal.dendriteType,
+        balanceSignal: bioSignal.balanceSignal,
         theme: streamSignal.modelOutputs.thematic?.theme,
         rheme: streamSignal.modelOutputs.thematic?.rheme,
         affectiveArousal: streamSignal.modelOutputs.affective?.arousal,
@@ -479,15 +499,14 @@ export class ProjectUnknown {
         connotativePolarity: streamSignal.modelOutputs.connotative?.polarity
       },
       vaultEntry: {
-        id: entry.id,
-        dominantLayer: entry.dominantLayer,
-        meaningScore: entry.meaningScore,
-        tensionScore: entry.tensionScore,
-        divergence: entry.divergence,
-        isDivergent: entry.isDivergent
+        id: entry.id, dominantLayer: entry.dominantLayer,
+        meaningScore: entry.meaningScore, tensionScore: entry.tensionScore,
+        divergence: entry.divergence, isDivergent: entry.isDivergent,
+        bioSignal: entry.bioSignal
       },
       retrieved,
       processing: this.processingVault.summary(),
+      bio: this.bioVault.summary(),
       vault: this.vault.summary()
     };
   }
@@ -496,16 +515,26 @@ export class ProjectUnknown {
     return {
       identity: this.identity,
       vault: this.vault.summary(),
-      processing: this.processingVault.summary()
+      processing: this.processingVault.summary(),
+      bio: this.bioVault.summary()
     };
   }
 
   modelEvolution() {
     const result = {};
-    for (const [key, model] of Object.entries(SEMANTIC_MODELS)) {
-      result[key] = model.vault ? model.vault.summary() : null;
-    }
+    for (const [key, model] of Object.entries(SEMANTIC_MODELS)) result[key] = model.vault ? model.vault.summary() : null;
     return result;
+  }
+
+  // What cortical topology has the system grown?
+  corticalMap() {
+    return {
+      depthMap: this.bioVault.depthMap(),
+      dominantCellTypes: this.bioVault.registry.dominant(10),
+      inhibitoryTypes: this.bioVault.registry.inhibitory().length,
+      excitatoryTypes: this.bioVault.registry.excitatory().length,
+      totalCellTypes: this.bioVault.registry.types.size
+    };
   }
 
   recall(query, count = 8) {
@@ -515,6 +544,7 @@ export class ProjectUnknown {
   reset() {
     this.vault.loops = []; this.vault.totalLoopsEver = 0; this.vault.save();
     this.processingVault.entries = []; this.processingVault.divergenceLog = []; this.processingVault.totalProcessed = 0; this.processingVault.save();
+    this.bioVault.entries = []; this.bioVault.totalProcessed = 0; this.bioVault.layerCounts = { L1:0,L2:0,L3:0,L4:0,L5:0,L6:0 }; this.bioVault.registry = new (Object.getPrototypeOf(this.bioVault.registry).constructor)(); this.bioVault.save();
     for (const model of Object.values(SEMANTIC_MODELS)) {
       if (model.vault) { model.vault.entries = []; model.vault.learnedTerms = new Map(); model.vault.totalScored = 0; model.vault.save(); }
     }
