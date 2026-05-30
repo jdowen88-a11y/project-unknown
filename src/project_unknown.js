@@ -1,19 +1,21 @@
 /**
  * PROJECT UNKNOWN
- * Version 0.5.0
+ * Version 0.6.0
  *
- * One living entity.
- * Every part has its own feedback loop, its own vault, its own evolution.
- * Everything evolves as one.
+ * One living entity. Streaming architecture.
  *
- * The seven semantic models are no longer static lenses.
- * Each has its own sub-vault, its own learning loop,
- * and its own evolving vocabulary that grows from every thought it processes.
+ * Flow:
+ * User input → main agent streams to seven models (parallel)
+ * → each model internalizes into its own vault
+ * → copies stream to processing vault
+ * → processing vault interprets seven into one + detects divergence
+ * → processing vault compares with main vault finalized thoughts
+ * → unified stream back to main agent
+ * → agent answers user
+ * → finalized thought sealed into main vault
+ * → loop starts over
  *
- * The parent vault stores resolved thoughts.
- * Each model vault stores what that model has learned about meaning.
- * The feedback-forward layer reads both.
- * Everything is one organism.
+ * Divergence — where models disagree — is where new understanding grows.
  *
  * Conceived: May 30, 2026
  */
@@ -21,6 +23,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { analyzeVaultPattern, buildFeedbackSignal, forwardAdjustedScore } from "./feedback_forward.js";
+import { ProcessingVault, StreamPipeline } from "./stream.js";
 
 export function nowISO() { return new Date().toISOString(); }
 export function uid() { return `loop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
@@ -60,28 +63,22 @@ export class TFIDF {
 export const globalTFIDF = new TFIDF();
 
 // ── MODEL VAULT ────────────────────────────────────────────
-// Every semantic model has its own vault.
-// It stores every input it scored, what it scored it, and what it learned.
-// Over time it builds its own evolved vocabulary from high-scoring terms.
 export class ModelVault {
   constructor(modelId, filePath) {
     this.modelId = modelId;
     this.filePath = filePath;
-    this.entries = [];        // every scored input
-    this.learnedTerms = new Map(); // term -> { score, count, weight }
+    this.entries = [];
+    this.learnedTerms = new Map();
     this.tfidf = new TFIDF();
     this.totalScored = 0;
     this.load();
   }
 
-  // Store a scored input and learn from it
   store(input, score, tokens, signal) {
     const entry = { id: uid(), input, score, tokens, signal, scoredAt: nowISO() };
     this.entries.push(entry);
     this.totalScored++;
     this.tfidf.addDocument(input);
-
-    // Learn: reinforce terms that appear in high-scoring inputs
     if (score > 0.3) {
       for (const term of new Set(tokens)) {
         if (term.length < 3) continue;
@@ -92,12 +89,24 @@ export class ModelVault {
         this.learnedTerms.set(term, existing);
       }
     }
-
+    // Also learn from divergence: store terms from confused states
+    // so the model can recognize them as frontier signals
     this.save();
     return entry;
   }
 
-  // Get the top evolved vocabulary terms by weight
+  // Called by processing vault when this model was flagged as confused
+  // Stores the divergence context so the model learns its own blind spots
+  learnFromDivergence(input, tokens, divergence) {
+    for (const term of new Set(tokens)) {
+      if (term.length < 3) continue;
+      const existing = this.learnedTerms.get(term) || { score: 0, count: 0, weight: 0, frontier: 0 };
+      existing.frontier = (existing.frontier || 0) + divergence;
+      this.learnedTerms.set(term, existing);
+    }
+    this.save();
+  }
+
   evolvedVocab(n = 30) {
     return [...this.learnedTerms.entries()]
       .sort((a, b) => b[1].weight - a[1].weight)
@@ -105,7 +114,6 @@ export class ModelVault {
       .map(([term, data]) => ({ term, ...data }));
   }
 
-  // Score boost from learned vocabulary
   learnedBoost(tokens) {
     if (!this.learnedTerms.size) return 0;
     const set = new Set(tokens);
@@ -116,7 +124,6 @@ export class ModelVault {
     return roundN(clampN(boost / 5));
   }
 
-  // Retrieve most relevant prior scored inputs
   retrieve(input, count = 3) {
     return [...this.entries]
       .map(e => ({ ...e, relevance: roundN(this.tfidf.similarity(input, e.input)) }))
@@ -127,12 +134,9 @@ export class ModelVault {
 
   summary() {
     const avgScore = this.entries.length
-      ? roundN(this.entries.reduce((s, e) => s + e.score, 0) / this.entries.length)
-      : 0;
+      ? roundN(this.entries.reduce((s, e) => s + e.score, 0) / this.entries.length) : 0;
     return {
-      modelId: this.modelId,
-      totalScored: this.totalScored,
-      avgScore,
+      modelId: this.modelId, totalScored: this.totalScored, avgScore,
       evolvedTerms: this.learnedTerms.size,
       topTerms: this.evolvedVocab(5).map(t => t.term)
     };
@@ -143,11 +147,9 @@ export class ModelVault {
     try {
       mkdirSync(path.dirname(this.filePath), { recursive: true });
       writeFileSync(this.filePath, JSON.stringify({
-        savedAt: nowISO(),
-        modelId: this.modelId,
-        totalScored: this.totalScored,
+        savedAt: nowISO(), modelId: this.modelId, totalScored: this.totalScored,
         learnedTerms: Object.fromEntries(this.learnedTerms),
-        entries: this.entries.slice(-500) // keep last 500 per model
+        entries: this.entries.slice(-500)
       }, null, 2));
     } catch {}
   }
@@ -165,13 +167,9 @@ export class ModelVault {
 }
 
 // ── SEVEN SEMANTIC MODELS ────────────────────────────────
-// Each model now has a vault injected at engine startup.
-// Each encode() call reads from its vault to boost scoring
-// and writes back what it learned.
 export const SEMANTIC_MODELS = {
   conceptual: {
-    id: "conceptual",
-    description: "Denotative meaning — what the words literally refer to",
+    id: "conceptual", description: "Denotative meaning — what the words literally refer to",
     vocab: ["define","means","is","refers","concept","object","entity","thing","what","type","kind","category","class","form","structure","function","purpose","system","process","state","condition","property","attribute","relation"],
     vault: null,
     encode(text) {
@@ -181,14 +179,13 @@ export const SEMANTIC_MODELS = {
       let base = roundN(clampN(score / this.vocab.length + uniqueness * 0.2));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
       const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Conceptual density: ${roundN(score/this.vocab.length)}. Uniqueness: ${roundN(uniqueness)}. Learned boost: ${boost}.`;
+      const signal = `Conceptual density: ${roundN(score/this.vocab.length)}. Uniqueness: ${roundN(uniqueness)}. Boost: ${boost}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, signal };
     }
   },
   connotative: {
-    id: "connotative",
-    description: "Emotional and cultural associations beyond literal meaning",
+    id: "connotative", description: "Emotional and cultural associations beyond literal meaning",
     pos: ["hope","love","safe","trust","warm","bright","good","free","peace","joy","strong","grow","heal","open","light"],
     neg: ["danger","fear","dark","threat","death","pain","trap","cold","fail","weak","broken","lost","shame","hate","war"],
     vault: null,
@@ -200,41 +197,36 @@ export const SEMANTIC_MODELS = {
       let base = roundN(clampN((p+n)/6));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
       const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Connotative charge: ${p+n}. Polarity: ${polarity > 0 ? "positive" : polarity < 0 ? "negative" : "neutral"} (${polarity}). Learned boost: ${boost}.`;
+      const signal = `Connotative charge: ${p+n}. Polarity: ${polarity > 0 ? "positive" : polarity < 0 ? "negative" : "neutral"} (${polarity}). Boost: ${boost}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, polarity, signal };
     }
   },
   collocative: {
-    id: "collocative",
-    description: "Word combination patterns and collocations",
+    id: "collocative", description: "Word combination patterns and collocations",
     pairs: [["feedback","loop"],["neural","network"],["build","system"],["real","time"],["deep","learning"],["open","source"],["long","term"],["high","risk"],["make","sense"],["take","action"]],
     vault: null,
     encode(text) {
       const tokens = tokenize(text); const set = new Set(tokens); let hits = 0; const matched = [];
       for (const [a,b] of this.pairs) if (set.has(a) && set.has(b)) { hits++; matched.push(`${a}+${b}`); }
-
-      // Learned collocations: check evolved vocab pairs from vault
       if (this.vault) {
         const evolved = this.vault.evolvedVocab(20).map(t => t.term);
         for (let i = 0; i < tokens.length - 1; i++) {
           if (evolved.includes(tokens[i]) && evolved.includes(tokens[i+1])) hits += 0.5;
         }
       }
-
       const bigrams = [];
       for (let i = 0; i < tokens.length-1; i++) bigrams.push(`${tokens[i]}+${tokens[i+1]}`);
       let base = roundN(clampN(hits/3 + bigrams.length/40));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
       const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Collocative hits: ${hits}. Matched: ${matched.join(", ")||"none"}. Learned boost: ${boost}.`;
+      const signal = `Collocative hits: ${hits}. Matched: ${matched.join(", ")||"none"}. Boost: ${boost}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, matchedPairs: matched, signal };
     }
   },
   affective: {
-    id: "affective",
-    description: "Emotional charge and arousal level",
+    id: "affective", description: "Emotional charge and arousal level",
     high: ["urgent","panic","excited","angry","scared","furious","desperate","overwhelm","intense","thrilled"],
     low:  ["calm","quiet","slow","gentle","still","rest","peace","soft","steady","easy"],
     vault: null,
@@ -246,14 +238,13 @@ export const SEMANTIC_MODELS = {
       let base = roundN(clampN((h+l)/5));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
       const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Affective arousal: ${arousal > 0.2 ? "high" : arousal < -0.2 ? "low" : "neutral"} (${arousal}). Learned boost: ${boost}.`;
+      const signal = `Affective arousal: ${arousal > 0.2 ? "high" : arousal < -0.2 ? "low" : "neutral"} (${arousal}). Boost: ${boost}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, arousal, signal };
     }
   },
   social: {
-    id: "social",
-    description: "Social power, formality, and relational role",
+    id: "social", description: "Social power, formality, and relational role",
     formal:   ["please","sir","doctor","professor","formally","respectfully","dear","hereby","shall"],
     informal: ["hey","yeah","dude","gonna","wanna","kinda","stuff","cool","ok","nah"],
     power:    ["must","authority","order","command","force","control","demand","require","enforce"],
@@ -267,14 +258,13 @@ export const SEMANTIC_MODELS = {
       let base = roundN(clampN((f+i+p)/6));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
       const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Social register: ${register}. Power: ${p}. Formal: ${f}. Informal: ${i}. Learned boost: ${boost}.`;
+      const signal = `Social register: ${register}. Power: ${p}. Formal: ${f}. Informal: ${i}. Boost: ${boost}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, register, signal };
     }
   },
   reflected: {
-    id: "reflected",
-    description: "Implied attitude, belief, and speaker stance",
+    id: "reflected", description: "Implied attitude, belief, and speaker stance",
     certain:   ["obviously","clearly","certainly","definitely","always","never","must","will","know"],
     uncertain: ["maybe","perhaps","might","could","possibly","uncertain","unclear","wonder","guess"],
     belief:    ["believe","feel","think","sense","assume","expect","trust","doubt","suspect"],
@@ -288,14 +278,13 @@ export const SEMANTIC_MODELS = {
       let base = roundN(clampN((c+u+b)/8));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
       const final = roundN(clampN(base + boost * 0.3));
-      const signal = `Stance: ${stance}. Certainty: ${c}. Uncertainty: ${u}. Belief: ${b}. Learned boost: ${boost}.`;
+      const signal = `Stance: ${stance}. Certainty: ${c}. Uncertainty: ${u}. Belief: ${b}. Boost: ${boost}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, stance, signal };
     }
   },
   thematic: {
-    id: "thematic",
-    description: "Topic structure — theme and information flow",
+    id: "thematic", description: "Topic structure — theme and information flow",
     vault: null,
     encode(text) {
       const tokens = tokenize(text);
@@ -308,45 +297,18 @@ export const SEMANTIC_MODELS = {
       const density = roundN(m.length / (tokens.length || 1));
       const boost = this.vault ? this.vault.learnedBoost(tokens) : 0;
       const final = roundN(clampN(density + boost * 0.2));
-      const signal = `Theme: "${theme}". Rheme: "${rheme}". Density: ${density}. Learned boost: ${boost}.`;
+      const signal = `Theme: "${theme}". Rheme: "${rheme}". Density: ${density}. Boost: ${boost}.`;
       if (this.vault) this.vault.store(text, final, tokens, signal);
       return { model: this.id, score: final, theme: theme||null, rheme: rheme||null, signal };
     }
   }
 };
 
-// ── INJECT MODEL VAULTS ───────────────────────────────────
-// Called at engine startup. Each model gets its own persistent vault.
 export function initModelVaults(dataDir) {
   for (const [key, model] of Object.entries(SEMANTIC_MODELS)) {
     const filePath = dataDir ? path.join(dataDir, `model_${key}.json`) : null;
     model.vault = new ModelVault(key, filePath);
   }
-}
-
-// ── UNIFIED MEANING LOOP ──────────────────────────────
-export function runSevenLayers(input, loopId) {
-  const embeddings = {}; let totalScore = 0; const signals = [];
-  for (const [key, model] of Object.entries(SEMANTIC_MODELS)) {
-    const result = model.encode(input);
-    embeddings[key] = result; signals.push(result.signal); totalScore += result.score || 0;
-  }
-  const meaningScore = roundN(totalScore / Object.keys(SEMANTIC_MODELS).length);
-  const dominant = Object.entries(embeddings).sort((a,b) => (b[1].score||0)-(a[1].score||0))[0];
-  return {
-    vaultPayload: { loopId, input, embeddings, meaningScore, dominantLayer: dominant[0], signals },
-    agentSignal: {
-      loopId, meaningScore, dominantLayer: dominant[0],
-      dominantDescription: SEMANTIC_MODELS[dominant[0]]?.description,
-      affectiveArousal: embeddings.affective?.arousal,
-      socialRegister: embeddings.social?.register,
-      reflectedStance: embeddings.reflected?.stance,
-      connotativePolarity: embeddings.connotative?.polarity,
-      theme: embeddings.thematic?.theme,
-      rheme: embeddings.thematic?.rheme,
-      summary: signals.join(" | ")
-    }
-  };
 }
 
 // ── FEEDBACK VAULT ──────────────────────────────────────
@@ -371,7 +333,6 @@ export class FeedbackVault {
     const avg = k => this.loops.length ? roundN(this.loops.reduce((s,l)=>s+(l[k]||0),0)/this.loops.length) : 0;
     const layers = {};
     for (const l of this.loops) if (l.dominantLayer) layers[l.dominantLayer] = (layers[l.dominantLayer]||0)+1;
-    // Include each model vault summary
     const modelVaults = {};
     for (const [key, model] of Object.entries(SEMANTIC_MODELS)) {
       if (model.vault) modelVaults[key] = model.vault.summary();
@@ -407,17 +368,21 @@ export class ThoughtLoop {
     this.tensionScore = roundN(1 - avgRel);
     this.learningPressure = roundN(clampN(this.tensionScore*0.6 + Math.min(this.entropy,4)/4*0.4));
   }
-  resolve(resolution, meaningResult, forwardScore) {
+  resolve(resolution, streamSignal, forwardScore) {
     this.resolution = resolution; this.closedAt = nowISO();
+    const meaningScore = forwardScore ?? streamSignal.unified.avgScore;
+    const dominantLayer = streamSignal.unified.dominantModel;
     return {
       id: this.id, input: this.input, resolution,
       openedAt: this.openedAt, closedAt: this.closedAt,
       inputEntropy: this.entropy, tensionScore: this.tensionScore, learningPressure: this.learningPressure,
       resonantLoops: this.resonantLoops,
-      meaningScore: forwardScore ?? meaningResult.vaultPayload.meaningScore,
-      baseMeaningScore: meaningResult.vaultPayload.meaningScore,
-      dominantLayer: meaningResult.vaultPayload.dominantLayer,
-      meaningEmbeddings: meaningResult.vaultPayload.embeddings
+      meaningScore,
+      baseMeaningScore: streamSignal.unified.avgScore,
+      dominantLayer,
+      divergence: streamSignal.unified.divergence,
+      isDivergent: streamSignal.unified.isDivergent,
+      meaningEmbeddings: streamSignal.modelOutputs
     };
   }
 }
@@ -431,66 +396,110 @@ export class ProjectUnknown {
 
     const dataDir = this.filePath ? path.dirname(this.filePath) : null;
 
-    // Init all seven model vaults before anything runs
+    // Init all seven model vaults
     initModelVaults(dataDir);
 
+    // Init processing vault
+    const processingPath = dataDir ? path.join(dataDir, "processing_vault.json") : null;
+    this.processingVault = new ProcessingVault(processingPath);
+    this.pipeline = new StreamPipeline(this.processingVault);
+
+    // Init main vault
     this.vault = new FeedbackVault(this.filePath);
+
     this.identity = {
       name: "Project Unknown",
-      version: "0.5.0",
-      premise: "One living entity. Every part has its own feedback loop, its own vault, its own evolution. Everything evolves as one.",
+      version: "0.6.0",
+      premise: "One living entity. Agent streams to seven models. Each internalizes. Processing vault unifies. Divergence is where growth happens. Main vault seals finalized thoughts. Everything evolves as one.",
       semanticLayers: Object.keys(SEMANTIC_MODELS),
       createdAt: "2026-05-30"
     };
   }
 
   think(input) {
+    // 1. Open thought loop
     const snapshot = this.vault.snapshot();
     const loop = new ThoughtLoop(input, snapshot);
-    const meaning = runSevenLayers(input, loop.id);
+
+    // 2. Retrieve finalized prior thoughts from main vault
     const retrieved = this.vault.retrieve(input, 5);
 
+    // 3. Stream: agent → seven models (parallel) → processing vault → unified signal
+    const streamSignal = this.pipeline.stream(input, SEMANTIC_MODELS, retrieved);
+
+    // 4. If divergence detected, teach confused models from it
+    if (streamSignal.unified.isDivergent) {
+      const tokens = tokenize(input);
+      for (const modelId of streamSignal.unified.confused) {
+        if (SEMANTIC_MODELS[modelId]?.vault) {
+          SEMANTIC_MODELS[modelId].vault.learnFromDivergence(input, tokens, streamSignal.unified.divergence);
+        }
+      }
+    }
+
+    // 5. Feedback-forward pattern analysis
     const recentLoops = this.vault.recent(20);
     const pattern = analyzeVaultPattern(recentLoops);
     const feedbackSignal = buildFeedbackSignal(retrieved, pattern);
-    const forwardScore = forwardAdjustedScore(meaning.vaultPayload.meaningScore, retrieved, pattern);
+    const forwardScore = forwardAdjustedScore(streamSignal.unified.avgScore, retrieved, pattern);
 
+    // 6. Build resolution
     const resolution = [
-      `Seven-layer analysis. Dominant: ${meaning.vaultPayload.dominantLayer}. Score: ${forwardScore}.`,
-      `Tension: ${loop.tensionScore}. Learning pressure: ${loop.learningPressure}.`,
+      `Stream analysis. Dominant: ${streamSignal.unified.dominantModel}. Score: ${forwardScore}.`,
+      streamSignal.unified.unifiedSignal,
       retrieved.length
-        ? `Vault: ${retrieved.length} prior loop(s). Strongest: "${retrieved[0]?.input?.slice(0,60)}" (${retrieved[0]?.relevance}).`
-        : `No prior vault resonance.`,
+        ? `Main vault: "${retrieved[0]?.input?.slice(0,60)}" (${retrieved[0]?.relevance}).`
+        : `Main vault: no prior resonance.`,
+      streamSignal.growthSignal ? `Growth: ${streamSignal.growthSignal}` : null,
       feedbackSignal ? `Forward: ${feedbackSignal}` : null
     ].filter(Boolean).join(" ");
 
-    const entry = loop.resolve(resolution, meaning, forwardScore);
+    // 7. Resolve loop, seal into main vault
+    const entry = loop.resolve(resolution, streamSignal, forwardScore);
     this.vault.store(entry);
 
     return {
       identity: this.identity,
-      agentSignal: { ...meaning.agentSignal, meaningScore: forwardScore, feedbackSignal, pattern },
+      agentSignal: {
+        dominantLayer: streamSignal.unified.dominantModel,
+        meaningScore: forwardScore,
+        divergence: streamSignal.unified.divergence,
+        isDivergent: streamSignal.unified.isDivergent,
+        confused: streamSignal.unified.confused,
+        activated: streamSignal.unified.activated,
+        growthSignal: streamSignal.growthSignal,
+        feedbackSignal,
+        pattern,
+        unifiedSignal: streamSignal.unified.unifiedSignal,
+        theme: streamSignal.modelOutputs.thematic?.theme,
+        rheme: streamSignal.modelOutputs.thematic?.rheme,
+        affectiveArousal: streamSignal.modelOutputs.affective?.arousal,
+        socialRegister: streamSignal.modelOutputs.social?.register,
+        reflectedStance: streamSignal.modelOutputs.reflected?.stance,
+        connotativePolarity: streamSignal.modelOutputs.connotative?.polarity
+      },
       vaultEntry: {
         id: entry.id,
         dominantLayer: entry.dominantLayer,
         meaningScore: entry.meaningScore,
-        baseMeaningScore: entry.baseMeaningScore,
-        tensionScore: entry.tensionScore
+        tensionScore: entry.tensionScore,
+        divergence: entry.divergence,
+        isDivergent: entry.isDivergent
       },
       retrieved,
+      processing: this.processingVault.summary(),
       vault: this.vault.summary()
     };
   }
 
-  // Full organism status — parent vault + all seven model vaults
   status() {
     return {
       identity: this.identity,
-      vault: this.vault.summary()
+      vault: this.vault.summary(),
+      processing: this.processingVault.summary()
     };
   }
 
-  // What has each model learned?
   modelEvolution() {
     const result = {};
     for (const [key, model] of Object.entries(SEMANTIC_MODELS)) {
@@ -505,6 +514,7 @@ export class ProjectUnknown {
 
   reset() {
     this.vault.loops = []; this.vault.totalLoopsEver = 0; this.vault.save();
+    this.processingVault.entries = []; this.processingVault.divergenceLog = []; this.processingVault.totalProcessed = 0; this.processingVault.save();
     for (const model of Object.values(SEMANTIC_MODELS)) {
       if (model.vault) { model.vault.entries = []; model.vault.learnedTerms = new Map(); model.vault.totalScored = 0; model.vault.save(); }
     }
