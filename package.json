@@ -1,0 +1,21 @@
+{
+  "name": "project-unknown",
+  "version": "0.3.0",
+  "description": "Every thought is its own feedback loop. Seven semantic models. The vault is the intelligence.",
+  "type": "module",
+  "main": "src/project_unknown.js",
+  "bin": {
+    "project-unknown": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "test": "node src/test.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["ai", "semantic", "feedback-loop", "vault", "nlp"],
+  "author": "jdowen88-a11y",
+  "license": "UNLICENSED",
+  "private": true
+}
