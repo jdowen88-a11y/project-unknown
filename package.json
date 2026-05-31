@@ -1,7 +1,7 @@
 {
   "name": "project-unknown",
-  "version": "0.3.0",
-  "description": "Every thought is its own feedback loop. Seven semantic models. The vault is the intelligence.",
+  "version": "1.4.0",
+  "description": "A private experimental cognition engine. One identity. Two streams. A vault that accumulates meaning over time.",
   "type": "module",
   "main": "src/project_unknown.js",
   "bin": {
@@ -14,7 +14,7 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": ["ai", "semantic", "feedback-loop", "vault", "nlp"],
+  "keywords": ["ai", "cognition", "semantic", "vault", "identity"],
   "author": "jdowen88-a11y",
   "license": "UNLICENSED",
   "private": true
