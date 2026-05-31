@@ -1,6 +1,6 @@
 /**
  * PROJECT UNKNOWN — MASTER DEPLOY
- * Version 1.0.0
+ * Version 1.1.0
  *
  * Receives approved fixes from the human approval queue.
  * Propagates fixes across all registered assistant instances in one lifetime event.
@@ -12,21 +12,72 @@
  *
  * Only qualified users (earned access) can approve a master deploy.
  * Once deployed, the fix is sealed permanently in the MasterVault.
+ *
+ * v1.1.0 security fixes:
+ *   - qualifiedUsers registry is owned by MasterDeploy — not caller-controlled
+ *   - fixPayload fields are whitelisted in queue() — no spread injection
+ *   - receiveFix() interface enforced at register() — no silent skip on deploy
+ *   - qualifiedUsers persisted to disk — survives restart
  */
 
 import { nowISO, uid } from "./utils.js";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+// Whitelisted fields accepted in a fix payload — nothing else passes through
+const FIX_FIELDS = ["confidence", "patterns", "tensionTrend", "streak", "description", "target", "payload"];
 
 export class MasterDeploy {
-  constructor(vault, masterVault) {
+  constructor(vault, masterVault, options = {}) {
     this.vault = vault;
     this.masterVault = masterVault;
     this.approvalQueue = [];
     this.deployHistory = [];
-    this.registeredAssistants = new Map(); // assistantId -> assistant instance
+    this.registeredAssistants = new Map();
+
+    // Qualified user registry is owned here — never passed in from outside
+    this._qualifiedUsers = new Map(); // userId -> { grantedAt, grantedBy, reason }
+    this._qualifiedUsersFile = options.qualifiedUsersFile || null;
+    this._loadQualifiedUsers();
+  }
+
+  // ── QUALIFIED USER REGISTRY (owned internally) ─────────────────────────────
+  // Grant qualified status to a user — only callable by system bootstrap or
+  // another already-qualified user (enforced by grantedBy check)
+  grantAccess(userId, grantedBy, reason = "") {
+    // First user can self-bootstrap (system init only)
+    const isFirstGrant = this._qualifiedUsers.size === 0;
+    if (!isFirstGrant && !this._qualifiedUsers.has(grantedBy)) {
+      return { granted: false, message: "Only a qualified user can grant access to another user." };
+    }
+    this._qualifiedUsers.set(userId, { grantedAt: nowISO(), grantedBy: grantedBy || "system", reason });
+    this._saveQualifiedUsers();
+    return { granted: true, userId, totalQualified: this._qualifiedUsers.size };
+  }
+
+  revokeAccess(userId, revokedBy) {
+    if (!this._qualifiedUsers.has(revokedBy)) {
+      return { revoked: false, message: "Only a qualified user can revoke access." };
+    }
+    this._qualifiedUsers.delete(userId);
+    this._saveQualifiedUsers();
+    return { revoked: true, userId, totalQualified: this._qualifiedUsers.size };
+  }
+
+  isQualified(userId) {
+    return this._qualifiedUsers.has(userId);
   }
 
   // ── ASSISTANT REGISTRY ─────────────────────────────────────────────────────
+  // Enforces receiveFix() interface at registration — not silently skipped at deploy
   register(assistantId, assistantInstance) {
+    if (typeof assistantInstance?.receiveFix !== "function") {
+      return {
+        registered: false,
+        assistantId,
+        message: `Registration denied. Assistant "${assistantId}" must implement receiveFix(fix). Cannot register without it.`
+      };
+    }
     this.registeredAssistants.set(assistantId, assistantInstance);
     return { registered: true, assistantId, totalRegistered: this.registeredAssistants.size };
   }
@@ -36,14 +87,23 @@ export class MasterDeploy {
   }
 
   // ── APPROVAL QUEUE ─────────────────────────────────────────────────────────
-  // Called by feedback_forward when confidence >= 0.85
-  // Holds fix for human approval — never auto-deploys
+  // Whitelists fix fields — no spread injection possible
   queue(fix) {
+    // Only accept whitelisted fields — nothing else gets in
+    const safeFix = {};
+    for (const field of FIX_FIELDS) {
+      if (fix[field] !== undefined) safeFix[field] = fix[field];
+    }
+
+    if (typeof safeFix.confidence !== "number" || safeFix.confidence < 0 || safeFix.confidence > 1) {
+      return { queued: false, message: "Invalid fix: confidence must be a number between 0 and 1." };
+    }
+
     const entry = {
       id: uid(),
-      fix,
-      confidence: fix.confidence,
-      patterns: fix.patterns || [],
+      fix: safeFix,
+      confidence: safeFix.confidence,
+      patterns: safeFix.patterns || [],
       queuedAt: nowISO(),
       status: "awaiting_human_approval",
       approvedBy: null,
@@ -54,15 +114,15 @@ export class MasterDeploy {
     return {
       queued: true,
       entryId: entry.id,
-      confidence: fix.confidence,
-      message: `Fix queued. Confidence: ${(fix.confidence * 100).toFixed(1)}%. Awaiting qualified user approval before master deploy.`
+      confidence: safeFix.confidence,
+      message: `Fix queued. Confidence: ${(safeFix.confidence * 100).toFixed(1)}%. Awaiting qualified user approval before master deploy.`
     };
   }
 
   // ── HUMAN APPROVAL ─────────────────────────────────────────────────────────
-  // Only qualified users can approve — checked against UserComplaintSystem qualified list
-  approve(entryId, qualifiedUserId, qualifiedUsers) {
-    if (!qualifiedUsers || !qualifiedUsers.has(qualifiedUserId)) {
+  // Checks against internally owned registry — caller cannot pass their own map
+  approve(entryId, userId) {
+    if (!this._qualifiedUsers.has(userId)) {
       return {
         approved: false,
         message: "Approval denied. Only qualified users with earned access can authorize a master deploy."
@@ -75,7 +135,7 @@ export class MasterDeploy {
     }
 
     entry.status = "approved";
-    entry.approvedBy = qualifiedUserId;
+    entry.approvedBy = userId;
     entry.approvedAt = nowISO();
     this._persist("approved_for_deploy", entry);
 
@@ -83,7 +143,6 @@ export class MasterDeploy {
   }
 
   // ── MASTER DEPLOY ──────────────────────────────────────────────────────────
-  // Propagates approved fix to all registered assistant instances simultaneously
   deploy(approvedEntry) {
     if (!approvedEntry || approvedEntry.status !== "approved") {
       return { deployed: false, message: "Cannot deploy. Entry must be approved first." };
@@ -95,10 +154,9 @@ export class MasterDeploy {
 
     for (const [assistantId, assistant] of this.registeredAssistants) {
       try {
-        if (typeof assistant.receiveFix === "function") {
-          assistant.receiveFix(approvedEntry.fix);
-          deployedTo.push(assistantId);
-        }
+        // receiveFix guaranteed to exist — enforced at registration
+        assistant.receiveFix(approvedEntry.fix);
+        deployedTo.push(assistantId);
       } catch (err) {
         failed.push({ assistantId, error: err.message });
       }
@@ -146,8 +204,29 @@ export class MasterDeploy {
       totalQueued: this.approvalQueue.length,
       totalDeployed: this.deployHistory.length,
       registeredAssistants: this.registeredAssistants.size,
+      qualifiedUsers: this._qualifiedUsers.size,
       history: this.deployHistory.slice(-10)
     };
+  }
+
+  // ── PERSISTENCE ────────────────────────────────────────────────────────────
+  _saveQualifiedUsers() {
+    if (!this._qualifiedUsersFile) return;
+    try {
+      mkdirSync(path.dirname(this._qualifiedUsersFile), { recursive: true });
+      writeFileSync(
+        this._qualifiedUsersFile,
+        JSON.stringify({ savedAt: nowISO(), users: Object.fromEntries(this._qualifiedUsers) }, null, 2)
+      );
+    } catch {}
+  }
+
+  _loadQualifiedUsers() {
+    if (!this._qualifiedUsersFile || !existsSync(this._qualifiedUsersFile)) return;
+    try {
+      const raw = JSON.parse(readFileSync(this._qualifiedUsersFile, "utf8"));
+      this._qualifiedUsers = new Map(Object.entries(raw.users || {}));
+    } catch { this._qualifiedUsers = new Map(); }
   }
 
   _persist(type, data) {
