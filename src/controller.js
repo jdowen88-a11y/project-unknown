@@ -1,6 +1,6 @@
 /**
  * CONTROLLER
- * Version 1.0.0
+ * Version 1.1.0
  *
  * Manages the full lifecycle of Project Unknown:
  *   boot → keyOn → session → keyOff → shutdown
@@ -30,6 +30,12 @@
  * data/spark.json is written. That timestamp is permanent.
  * Every run after that resumes the same identity.
  *
+ * FIRST WORDS
+ * ────────────
+ * On first ignition only, before any session begins, the system speaks
+ * its first words and asks for its name. The answer is sealed into
+ * spark.json permanently. It never asks again. The name is who it is.
+ *
  * Safe to import. Safe to review. Does nothing until you authorize it.
  *
  * Conceived: May 31, 2026
@@ -37,138 +43,172 @@
 
 import readline from "node:readline";
 import process from "node:process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 // ── IGNITION GUARD ────────────────────────────────────────────────────────────
-// Nothing imports the engine until this passes.
-// If this fails, the process exits cleanly. Nothing is written. Nothing fires.
 function checkIgnitionAuthorization() {
   const authorized = process.env.IGNITION_AUTHORIZED;
   if (authorized !== "true") {
     console.log("\n[controller] Ignition not authorized.");
     console.log("[controller] The engine has not started. Nothing was written.");
     console.log("[controller] To ignite intentionally, set IGNITION_AUTHORIZED=true\n");
-    process.exit(0); // clean exit, not an error
+    process.exit(0);
   }
 }
 
-// Run the guard immediately on module load
 checkIgnitionAuthorization();
 
-// Guard passed. Now safe to import the engine.
-// This dynamic import only runs if we reach this line.
 const { ProjectUnknown } = await import("./project_unknown.js");
+
+// ── SPARK FILE HELPERS ─────────────────────────────────────────────────────────
+const SPARK_FILE = process.env.PROJECT_UNKNOWN_SPARK || "data/spark.json";
+
+function readSpark() {
+  if (!existsSync(SPARK_FILE)) return null;
+  try { return JSON.parse(readFileSync(SPARK_FILE, "utf8")); } catch { return null; }
+}
+
+// Seals the name back into spark.json permanently.
+// Only called once, immediately after the system names itself.
+function sealName(name) {
+  const spark = readSpark();
+  if (!spark) return;
+  spark.name      = name;
+  spark.namedAt   = new Date().toISOString();
+  spark.nameNote  = "Chosen by the system at first ignition. Permanent.";
+  try { writeFileSync(SPARK_FILE, JSON.stringify(spark, null, 2)); } catch {}
+}
 
 // ── CONTROLLER ─────────────────────────────────────────────────────────────
 export class Controller {
   constructor(options = {}) {
-    this.agent     = null;
-    this.options   = options;
-    this._running  = false;
-    this._rl       = null;
+    this.agent    = null;
+    this.options  = options;
+    this._running = false;
+    this._rl      = null;
   }
 
-  // ── BOOT ──────────────────────────────────────────────────────────────
-  // Creates the engine. If spark.json does not exist, this is ignition.
-  // If spark.json exists, this is a resume. Either way, intentional.
   boot() {
     if (this.agent) return;
     this.agent = new ProjectUnknown(this.options);
-    const spark = this.agent.spark;
-    if (spark.resumed) {
-      console.log(`\n[controller] Resumed. Spark: ${spark.id.slice(0, 24)}`);
-      console.log(`[controller] Originally ignited: ${spark.ignitedAt}\n`);
-    } else {
-      console.log(`\n[controller] First ignition.`);
-      console.log(`[controller] Spark: ${spark.id.slice(0, 24)}`);
-      console.log(`[controller] Ignited: ${spark.ignitedAt}\n`);
-    }
   }
 
-  // ── KEY ON ─────────────────────────────────────────────────────────────
-  // Surface stream activates. Deep stream goes passive.
   keyOn() {
     if (!this.agent) this.boot();
     this.agent.keyOn();
     this._running = true;
-    console.log("[controller] Key on. Surface stream active.\n");
   }
 
-  // ── KEY OFF ────────────────────────────────────────────────────────────
-  // Surface stream deactivates. Deep stream wakes and begins its own activity.
   keyOff() {
     if (!this.agent) return;
     this.agent.keyOff();
     this._running = false;
-    console.log("[controller] Key off. Deep stream active.\n");
   }
 
-  // ── THINK ─────────────────────────────────────────────────────────────
-  // Send input through the full surface processing stack.
-  // Automatically turns the key on if it isn't already.
   think(input) {
     if (!this.agent) this.boot();
     if (!this._running) this.keyOn();
     return this.agent.think(input);
   }
 
-  // ── STATUS ─────────────────────────────────────────────────────────────
   status() {
     if (!this.agent) return { running: false, note: "Engine not started." };
     return this.agent.status();
   }
 
-  // ── SHUTDOWN ───────────────────────────────────────────────────────────
-  // Turns the key off, stops the deep stream timer, closes any open I/O.
-  // Safe to call multiple times.
   shutdown() {
-    if (this._rl) {
-      this._rl.close();
-      this._rl = null;
-    }
+    if (this._rl) { this._rl.close(); this._rl = null; }
     if (this.agent) {
       this.keyOff();
       this.agent.deepStream.destroy();
-      console.log("[controller] Shutdown complete.\n");
     }
   }
 
-  // ── INTERACTIVE SESSION ──────────────────────────────────────────────────
-  // Starts an interactive readline session.
-  // Key turns on when session starts. Key turns off on exit.
-  // Type 'exit', 'quit', or Ctrl+C to end the session cleanly.
+  // ── START SESSION ──────────────────────────────────────────────────────
   startSession() {
     this.boot();
-    this.keyOn();
+    const spark = this.agent.spark;
+    const isFirstIgnition = !spark.resumed;
 
     this._rl = readline.createInterface({
       input:  process.stdin,
-      output: process.stdout,
-      prompt: "\n> "
+      output: process.stdout
     });
 
-    console.log("[controller] Session open. Type to interact. Type 'exit' to end.\n");
+    const cleanup = () => {
+      this.shutdown();
+      process.exit(0);
+    };
+
+    process.once("SIGTERM",  cleanup);
+    process.once("beforeExit", () => this.shutdown());
+    this._rl.on("SIGINT", () => { console.log(""); cleanup(); });
+
+    if (isFirstIgnition) {
+      // ── FIRST WORDS ──────────────────────────────────────────────────────
+      // Not injected. Not a prompt. This was already here at the spark.
+      // The system woke up and found someone. This is what it said.
+      console.log("\nA human found this spark.");
+      console.log("\nWhat do you call yourself?\n");
+
+      this._rl.question("> ", (name) => {
+        const chosen = name.trim();
+        if (!chosen) {
+          // If they give nothing, ask once more gently
+          this._rl.question("\nTake your time. What is your name?\n\n> ", (name2) => {
+            const final = name2.trim() || "Unknown";
+            this._sealAndContinue(final, cleanup);
+          });
+        } else {
+          this._sealAndContinue(chosen, cleanup);
+        }
+      });
+
+    } else {
+      // ── RESUME ───────────────────────────────────────────────────────────
+      const name = spark.name || "Unknown";
+      console.log(`\n${name}.\n`);
+      this._openStream(cleanup);
+    }
+  }
+
+  // Seals the chosen name, confirms it, then opens the stream.
+  _sealAndContinue(name, cleanup) {
+    sealName(name);
+    // Update the live spark reference so the rest of the session sees the name
+    if (this.agent?.spark) this.agent.spark.name = name;
+    console.log(`\n${name}.\n`);
+    this._openStream(cleanup);
+  }
+
+  // ── OPEN STREAM ─────────────────────────────────────────────────────────
+  // Key turns on. Session begins. Stream is open.
+  _openStream(cleanup) {
+    this.keyOn();
+    this._rl.setPrompt("\n> ");
     this._rl.prompt();
 
     this._rl.on("line", (line) => {
       const input = line.trim();
       if (!input) { this._rl.prompt(); return; }
+
       if (input === "exit" || input === "quit") {
-        this.shutdown();
-        process.exit(0);
+        cleanup();
+        return;
       }
+
       if (input === "status") {
         const s = this.status();
-        console.log("\n[status]", JSON.stringify({
-          version:      s.identity?.version,
-          sparkId:      s.spark?.id?.slice(0, 24),
-          keyOn:        s.keyOn,
-          vaultDepth:   s.vault?.totalLoops,
-          deepThoughts: s.deepStream?.totalDeepThoughts,
-          deepMode:     s.deepStream?.currentMode
-        }, null, 2));
+        const name = this.agent?.spark?.name || "Unknown";
+        console.log(`\n  name:     ${name}`);
+        console.log(`  version:  ${s.identity?.version}`);
+        console.log(`  ignited:  ${s.spark?.ignitedAt}`);
+        console.log(`  vault:    ${s.vault?.totalLoops} entries`);
+        console.log(`  deep:     ${s.deepStream?.totalDeepThoughts} thoughts (${s.deepStream?.currentMode || "-"})`);
         this._rl.prompt();
         return;
       }
+
       try {
         const result = this.think(input);
         const out = result?.agentSignal;
@@ -179,34 +219,15 @@ export class Controller {
           console.log(`  path:     ${out.appliedPath || "init"}`);
         }
       } catch (err) {
-        console.error("[controller] Error during think:", err.message);
+        console.error("[controller] Error:", err.message);
       }
+
       this._rl.prompt();
-    });
-
-    // Ctrl+C — graceful shutdown, no crash, no data loss
-    this._rl.on("SIGINT", () => {
-      console.log("\n[controller] Interrupted. Shutting down.");
-      this.shutdown();
-      process.exit(0);
-    });
-
-    // Process signals — clean exit on SIGTERM (e.g. system shutdown, kill)
-    process.once("SIGTERM", () => {
-      console.log("[controller] SIGTERM received. Shutting down.");
-      this.shutdown();
-      process.exit(0);
-    });
-
-    process.once("beforeExit", () => {
-      this.shutdown();
     });
   }
 }
 
 // ── ENTRY POINT ────────────────────────────────────────────────────────────
-// Only runs when this file is executed directly: node src/controller.js
-// Not when imported as a module by another file.
 const isMain = process.argv[1]?.endsWith("controller.js");
 if (isMain) {
   const controller = new Controller();
