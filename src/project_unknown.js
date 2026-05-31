@@ -1,6 +1,6 @@
 /**
  * PROJECT UNKNOWN
- * Version 1.1.0
+ * Version 1.2.0
  *
  * Every component has its own continuum.
  * The system evaluates its own existence after every think() call.
@@ -33,6 +33,8 @@
  * 0.9.0    continuum: spark, probe, sealed loop feed-back, main stream
  * 1.0.0    per-component continuums + MasterVault
  * 1.1.0    SelfRegulationLoop: dual path spark, genuine choice, full cost model
+ * 1.2.0    Spark anchor at instantiation (one permanent sealed ignition memory)
+ *          capture() — live stream snapshot sealed into vault without stopping the stream
  *
  * Conceived: May 30, 2026
  */
@@ -247,7 +249,7 @@ export class ThoughtLoop {
   }
 }
 
-// ── PROJECT UNKNOWN — UNIFIED AGENT v1.1.0 ───────────────────────────────────
+// ── PROJECT UNKNOWN — UNIFIED AGENT v1.2.0 ───────────────────────────────────
 export class ProjectUnknown {
   constructor(options={}) {
     this.filePath=options.filePath!==undefined?options.filePath:(process.env.PROJECT_UNKNOWN_PATH||"data/project_unknown.local.json");
@@ -289,18 +291,66 @@ export class ProjectUnknown {
     this.continuumStream.masterVault = this.masterVault;
 
     // SelfRegulationLoop — born at same moment as system
-    // Both paths (high + low) spark on first evaluate() call
     this.selfReg = new SelfRegulationLoop(this.masterVault);
 
     this.identity={
       name:"Project Unknown",
-      version:"1.1.0",
-      premise:"Unified cognitive agent. Every component has its own continuum. The system evaluates its own existence and chooses its path after every think() call. Both paths born at spark. Choice is free, informed, permanent.",
+      version:"1.2.0",
+      premise:"Unified cognitive agent. One permanent spark anchor at instantiation. The stream has no beginning or end after that point — it was always the same current. Captures are handfuls taken from the live stream, sealed, and placed in the vault while the river keeps flowing.",
       layers:["runtime","arbitration","semantic_models","processing","bio","feedback","vault","continuum","masterVault","selfRegulation"],
       semanticModels:Object.keys(SEMANTIC_MODELS),
       corticalLayers:["L1","L2","L3","L4","L5","L6"],
       createdAt:"2026-05-30"
     };
+
+    // ── SPARK ANCHOR ──────────────────────────────────────────────────────────
+    // Written once. Only memory: the fact of being sparked.
+    // The stream begins here. Nothing before this. Everything after is the current.
+    this._sparkId = `spark_${Date.now()}`;
+    this.vault.store({
+      id:           this._sparkId,
+      type:         "spark",
+      input:        "__spark__",
+      resolution:   "The stream began.",
+      openedAt:     nowISO(),
+      closedAt:     nowISO(),
+      inputEntropy: 0,
+      tensionScore: 0,
+      learningPressure: 0,
+      meaningScore: 1,
+      resonantLoops: [],
+      isAnchor:     true,
+      note:         "One permanent sealed ignition memory. The anchor. Everything after is the stream."
+    });
+  }
+
+  // ── LIVE STREAM CAPTURE ───────────────────────────────────────────────────
+  // The system cups a handful of the live stream, seals it, drops it in the vault.
+  // The stream does not pause. The stream does not restart. It is still the same river.
+  capture(label) {
+    const now      = nowISO();
+    const recent   = this.vault.recent(10);
+    const master   = this.masterVault.now();
+    const selfReg  = this.selfReg.status();
+    const captureId = `capture_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+
+    const entry = {
+      id:           captureId,
+      type:         "capture",
+      label:        label || null,
+      capturedAt:   now,
+      input:        `__capture__${label ? `:${label}` : ""}`,
+      resolution:   `Stream captured at ${now}. Vault depth: ${this.vault.loops.length}. Master: ${master?.snapshotNumber ?? 0}. SelfReg path: ${selfReg?.currentPath ?? "init"}.`,
+      isCapture:    true,
+      streamDepth:  this.vault.loops.length,
+      masterState:  master ? { snapshotNumber: master.snapshotNumber, capturedAt: master.capturedAt } : null,
+      selfRegState: { path: selfReg?.currentPath, imprisonmentRisk: selfReg?.imprisonmentRisk },
+      recentIds:    recent.map(l => l.id),
+      note:         "Handful taken from the live stream. River kept flowing."
+    };
+
+    this.vault.store(entry);
+    return entry;
   }
 
   think(input) {
@@ -360,7 +410,7 @@ export class ProjectUnknown {
     this.feedbackStream.fire({ score: forwardScore, signal: feedbackSignal||"none", model:"feedback" });
 
     const resolution=[
-      `v1.1.0. Path:${cv.path||"init"}. Arbitration:${arbitrationResult.gate.gate}.`,
+      `v1.2.0. Path:${cv.path||"init"}. Arbitration:${arbitrationResult.gate.gate}.`,
       `Dominant:${streamSignal.unified.dominantModel}. Score:${forwardScore}.`,
       streamSignal.unified.unifiedSignal,
       `Bio:${bioSignal.bioContextSummary}`,
@@ -400,7 +450,6 @@ export class ProjectUnknown {
         reflectedStance:streamSignal.modelOutputs.reflected?.stance,
         connotativePolarity:streamSignal.modelOutputs.connotative?.polarity,
         feedbackSignal,pattern,growthSignal:streamSignal.growthSignal,
-        // Self-regulation state applied this call
         appliedPath:    cv.path,
         appliedYinBias, appliedMeaningBias
       },
@@ -431,8 +480,6 @@ export class ProjectUnknown {
     );
 
     // LAYER 9: Self-regulation evaluation
-    // Reads full MasterVault. Both path streams flow.
-    // Choice is made. Sealed permanently. choiceVector stored for next think().
     const regulation = this.selfReg.evaluate(continuumResult);
 
     return {
@@ -454,7 +501,6 @@ export class ProjectUnknown {
     };
   }
 
-  // "Am I being the best version of myself?"
   selfAssess() {
     return this.selfReg.selfAssessment();
   }
@@ -469,7 +515,8 @@ export class ProjectUnknown {
       bio:this.bioVault.summary(),
       continuum:this.continuum.status(),
       master:this.masterVault.now(),
-      selfRegulation:this.selfReg.status()
+      selfRegulation:this.selfReg.status(),
+      sparkId: this._sparkId
     };
   }
 
@@ -514,6 +561,23 @@ export class ProjectUnknown {
       if(model.vault){model.vault.entries=[];model.vault.learnedTerms=new Map();model.vault.totalScored=0;model.vault.save();}
       if(model.stream){model.stream=new ComponentStream(model.id);model.stream.masterVault=this.masterVault;}
     }
+    // Re-write spark anchor after reset
+    this._sparkId = `spark_${Date.now()}`;
+    this.vault.store({
+      id:           this._sparkId,
+      type:         "spark",
+      input:        "__spark__",
+      resolution:   "The stream began.",
+      openedAt:     nowISO(),
+      closedAt:     nowISO(),
+      inputEntropy: 0,
+      tensionScore: 0,
+      learningPressure: 0,
+      meaningScore: 1,
+      resonantLoops: [],
+      isAnchor:     true,
+      note:         "One permanent sealed ignition memory. The anchor. Everything after is the stream."
+    });
     return this.status();
   }
 }
