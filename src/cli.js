@@ -1,6 +1,6 @@
 // cli.js — Free-flow conversation interface
 // Raw input in. Raw conversation out. No banners, labels, or structural chatter.
-// Vision commands: eye:on, eye:off, eye:state
+// Commands: status, recall, reset, exit, quit, eye:on, eye:off, eye:state
 
 import readline from 'readline';
 import { ProjectUnknown } from './project_unknown.js';
@@ -31,9 +31,10 @@ rl.on('line', async (line) => {
     return;
   }
 
+  // FIX: engine exposes selfAssess(), not selfAssessment()
   if (input === 'status') {
-    const reg = engine.selfAssessment ? engine.selfAssessment() : 'Status unavailable.';
-    console.log(reg);
+    const reg = engine.selfAssess ? engine.selfAssess() : 'Status unavailable.';
+    console.log(typeof reg === 'object' ? JSON.stringify(reg, null, 2) : reg);
     rl.prompt();
     return;
   }
@@ -44,7 +45,6 @@ rl.on('line', async (line) => {
     return;
   }
 
-  // Vision commands
   if (input === 'eye:on') {
     vision.open('camera');
     rl.prompt();
@@ -63,7 +63,6 @@ rl.on('line', async (line) => {
     return;
   }
 
-  // Pass vision state into the stream context silently
   const visionContext = vision.isPresent()
     ? `[vision:present sessionId=${vision.state().sessionId}]`
     : null;

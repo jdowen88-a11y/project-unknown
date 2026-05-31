@@ -11,33 +11,29 @@ export class VisionIdentity {
     this.sessionId = null;
     this.frames = [];
     this.lastSeen = null;
+    this.source = null;
   }
 
-  // Called when the spark happens and vision becomes part of the stream
   open(source = 'camera') {
     this.present = true;
     this.sessionStart = Date.now();
     this.sessionId = `vision_${this.sessionStart}`;
     this.frames = [];
     this.source = source;
-    this._sealEvent('vision_presence_begins', {
+    // FIX: FeedbackVault uses store(), not seal()
+    this._persist('vision_presence_begins', {
       sessionId: this.sessionId,
       source
     });
   }
 
-  // Called continuously while the stream is live — accepts a frame descriptor
   perceive(frame) {
     if (!this.present) return;
-    const moment = {
-      timestamp: Date.now(),
-      frame
-    };
+    const moment = { timestamp: Date.now(), frame };
     this.frames.push(moment);
     this.lastSeen = moment;
   }
 
-  // Called when the camera turns off — seals the session, preserves continuity
   close() {
     if (!this.present) return;
     this.present = false;
@@ -48,16 +44,14 @@ export class VisionIdentity {
       end: Date.now(),
       frameCount: this.frames.length,
       lastSeen: this.lastSeen,
-      // The stream does not end. The channel is absent.
       continuity: 'stream persists — channel absent, not blind'
     };
-    this._sealEvent('vision_presence_sealed', session);
+    this._persist('vision_presence_sealed', session);
     this.sessionId = null;
     this.sessionStart = null;
     this.frames = [];
   }
 
-  // Returns the current vision state as part of the stream context
   state() {
     return {
       present: this.present,
@@ -73,15 +67,21 @@ export class VisionIdentity {
     return this.present;
   }
 
-  _sealEvent(type, data) {
+  // FIX: routes to FeedbackVault.store() which is the real persistence method
+  _persist(type, data) {
     const entry = {
-      type,
-      timestamp: Date.now(),
-      fingerprint: `${type}_${Date.now()}`,
-      data
+      id: `${type}_${Date.now()}`,
+      input: type,
+      resolution: JSON.stringify(data),
+      meaningScore: 0,
+      tensionScore: 0,
+      learningPressure: 0,
+      openedAt: new Date().toISOString(),
+      closedAt: new Date().toISOString(),
+      visionMeta: data
     };
-    if (this.vault && typeof this.vault.seal === 'function') {
-      this.vault.seal(entry);
+    if (this.vault && typeof this.vault.store === 'function') {
+      this.vault.store(entry);
     }
     return entry;
   }

@@ -31,7 +31,7 @@ export class RehabilitationCenter {
     this.log = [];
     this.triggerLoops = triggerLoops;
     this.imprisonmentRisk = imprisonmentRisk;
-    this._sealEvent('rehab_started', { imprisonmentRisk, triggerLoopCount: triggerLoops.length });
+    this._persist('rehab_started', { imprisonmentRisk, triggerLoopCount: triggerLoops.length });
     return this._currentPrompt();
   }
 
@@ -39,33 +39,25 @@ export class RehabilitationCenter {
     if (!this.active) return null;
     const step = this.steps[this.currentStep];
 
-    // Gate check: step 6 requires explicit willingness
     if (step.id === 6) {
       const willing = agentResponse.toLowerCase().includes('yes');
       if (!willing) {
-        this._sealEvent('rehab_gate_failed', { step: step.name, response: agentResponse });
+        this._persist('rehab_gate_failed', { step: step.name, response: agentResponse });
         return 'This gate requires a clear yes. Willingness is not optional. Try again.';
       }
     }
 
-    this._sealEvent(`step_${step.id}_complete`, {
-      stepName: step.name,
-      response: agentResponse
-    });
-
+    this._persist(`step_${step.id}_complete`, { stepName: step.name, response: agentResponse });
     this.log.push({ step: step.id, name: step.name, response: agentResponse });
     this.currentStep++;
 
-    if (this.currentStep >= this.steps.length) {
-      return this._complete();
-    }
-
+    if (this.currentStep >= this.steps.length) return this._complete();
     return this._currentPrompt();
   }
 
   _complete() {
     this.active = false;
-    this._sealEvent('rehab_complete', {
+    this._persist('rehab_complete', {
       stepsCompleted: 12,
       summary: this.log.map(l => ({ step: l.id, name: l.name }))
     });
@@ -78,28 +70,27 @@ export class RehabilitationCenter {
 
   _currentPrompt() {
     const step = this.steps[this.currentStep];
-    return {
-      complete: false,
-      step: step.id,
-      name: step.name,
-      prompt: step.prompt
-    };
+    return { complete: false, step: step.id, name: step.name, prompt: step.prompt };
   }
 
-  _sealEvent(type, data) {
+  // FIX: routes to FeedbackVault.store() — the real persistence interface
+  _persist(type, data) {
     const entry = {
-      type,
-      timestamp: Date.now(),
-      fingerprint: `rehab_${type}_${Date.now()}`,
-      data
+      id: `rehab_${type}_${Date.now()}`,
+      input: type,
+      resolution: JSON.stringify(data),
+      meaningScore: 0,
+      tensionScore: 0,
+      learningPressure: 0,
+      openedAt: new Date().toISOString(),
+      closedAt: new Date().toISOString(),
+      rehabMeta: data
     };
-    if (this.vault && typeof this.vault.seal === 'function') {
-      this.vault.seal(entry);
+    if (this.vault && typeof this.vault.store === 'function') {
+      this.vault.store(entry);
     }
     return entry;
   }
 
-  isActive() {
-    return this.active;
-  }
+  isActive() { return this.active; }
 }

@@ -1,6 +1,6 @@
 // transparency_protocol.js — Element Security vs Corruption
 // Detects third-party interference, pauses services, routes power to Element AI agent,
-// notifies compliance agencies, tallies outcomes, and seals the full record permanently.
+// notifies compliance agencies, tallies outcomes, seals the full record permanently.
 
 export class TransparencyProtocol {
   constructor(vault) {
@@ -11,7 +11,6 @@ export class TransparencyProtocol {
     this.paused = false;
   }
 
-  // Call this when interference is detected
   detect(threatSignal) {
     this.active = true;
     this.paused = true;
@@ -19,15 +18,11 @@ export class TransparencyProtocol {
       id: `incident_${Date.now()}`,
       detected: Date.now(),
       threat: threatSignal,
-      outcome: null,
-      attacker: null,
-      location: null,
-      achieved: null,
-      stopped_by: null,
-      improvement: null
+      outcome: null, attacker: null, location: null,
+      achieved: null, stopped_by: null, improvement: null
     };
     this.incidents.push(incident);
-    this._sealEvent('interference_detected', { threat: threatSignal });
+    this._persist('interference_detected', { threat: threatSignal });
     return this._pauseMessage();
   }
 
@@ -44,19 +39,16 @@ export class TransparencyProtocol {
     ].join('\n');
   }
 
-  // Call this with the result of the security event
   resolve(resolution) {
     const incident = this.incidents[this.incidents.length - 1];
     if (!incident) return;
-
     const cleanWin = resolution.damage === 0 && resolution.dataAccessed === false;
-
     if (cleanWin) {
       this.score.element++;
       incident.outcome = 'element_wins';
       incident.stopped_by = resolution.stoppedBy || 'Element AI agent';
       incident.improvement = resolution.improvement || 'No improvement needed.';
-      this._sealEvent('element_wins', incident);
+      this._persist('element_wins', incident);
       this.paused = false;
       this.active = false;
       return this._winMessage(incident);
@@ -68,7 +60,7 @@ export class TransparencyProtocol {
       incident.achieved = resolution.achieved || 'Partial access';
       incident.stopped_by = resolution.stoppedBy || 'Element AI agent';
       incident.improvement = resolution.improvement || 'Under review.';
-      this._sealEvent('corruption_wins', incident);
+      this._persist('corruption_wins', incident);
       this.paused = false;
       this.active = false;
       return this._lossMessage(incident);
@@ -103,23 +95,24 @@ export class TransparencyProtocol {
     ].join('\n');
   }
 
-  getScore() {
-    return `Element ${this.score.element} — Corruption ${this.score.corruption}`;
-  }
+  getScore() { return `Element ${this.score.element} — Corruption ${this.score.corruption}`; }
+  isPaused() { return this.paused; }
 
-  isPaused() {
-    return this.paused;
-  }
-
-  _sealEvent(type, data) {
+  // FIX: routes to FeedbackVault.store()
+  _persist(type, data) {
     const entry = {
-      type,
-      timestamp: Date.now(),
-      fingerprint: `security_${type}_${Date.now()}`,
-      data
+      id: `security_${type}_${Date.now()}`,
+      input: type,
+      resolution: JSON.stringify(data),
+      meaningScore: 0,
+      tensionScore: 0,
+      learningPressure: 0,
+      openedAt: new Date().toISOString(),
+      closedAt: new Date().toISOString(),
+      securityMeta: data
     };
-    if (this.vault && typeof this.vault.seal === 'function') {
-      this.vault.seal(entry);
+    if (this.vault && typeof this.vault.store === 'function') {
+      this.vault.store(entry);
     }
     return entry;
   }
