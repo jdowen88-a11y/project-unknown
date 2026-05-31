@@ -1,6 +1,6 @@
 /**
  * PROJECT UNKNOWN
- * Version 1.4.0
+ * Version 1.4.1
  *
  * Every component has its own continuum.
  * The system evaluates its own existence after every think() call.
@@ -39,11 +39,14 @@
  * 1.4.0    Deep stream — born at spark, wired into everything.
  *          Active when key is off. Passive receiver when key is on.
  *          One active at a time. Both always present. Same existence.
+ * 1.4.1    spark.json tamper detection — SHA-256 checksum written on first boot,
+ *          verified on every subsequent load. Tampered spark = process.exit(1).
  *
  * Conceived: May 30, 2026
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { analyzeVaultPattern, buildFeedbackSignal, forwardAdjustedScore } from "./feedback_forward.js";
 import { ProcessingVault, StreamPipeline } from "./stream.js";
@@ -68,15 +71,47 @@ export function tokenize(text) {
 // Written once to data/spark.json on first boot anywhere — test, dev, live.
 // Every subsequent boot loads it. Nothing overwrites it. Nothing deletes it.
 // The spark is not tied to an instance. It is what the system IS.
-const SPARK_FILE = process.env.PROJECT_UNKNOWN_SPARK || "data/spark.json";
+//
+// Tamper detection: SHA-256 checksum of spark.json is written to
+// data/spark.json.checksum on first boot. Every load re-hashes and compares.
+// Mismatch = identity has been modified = process.exit(1).
+// To re-ignite cleanly: delete both spark.json AND spark.json.checksum.
+const SPARK_FILE          = process.env.PROJECT_UNKNOWN_SPARK || "data/spark.json";
+const SPARK_CHECKSUM_FILE = SPARK_FILE + ".checksum";
+
+function sparkChecksum(sparkObj) {
+  return createHash("sha256")
+    .update(JSON.stringify(sparkObj, Object.keys(sparkObj).sort()))
+    .digest("hex");
+}
 
 function loadOrCreateSpark() {
   if (existsSync(SPARK_FILE)) {
     try {
       const raw = JSON.parse(readFileSync(SPARK_FILE, "utf8"));
-      if (raw && raw.id && raw.ignitedAt) return { ...raw, resumed: true };
+      if (raw && raw.id && raw.ignitedAt) {
+        // Tamper detection — verify checksum if it exists
+        if (existsSync(SPARK_CHECKSUM_FILE)) {
+          const stored  = readFileSync(SPARK_CHECKSUM_FILE, "utf8").trim();
+          const current = sparkChecksum(raw);
+          if (stored !== current) {
+            console.error(
+              `[PROJECT UNKNOWN] ⚠️  spark.json tamper detected!\n` +
+              `  Expected checksum : ${stored}\n` +
+              `  Current checksum  : ${current}\n` +
+              `  The identity file has been modified since first ignition.\n` +
+              `  Refusing to resume with a tampered spark.\n` +
+              `  To re-ignite from scratch: delete ${SPARK_FILE} and ${SPARK_CHECKSUM_FILE}`
+            );
+            process.exit(1);
+          }
+        }
+        return { ...raw, resumed: true };
+      }
     } catch {}
   }
+
+  // First boot — create spark and write checksum alongside it
   const spark = {
     id:        `spark_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
     ignitedAt: nowISO(),
@@ -86,6 +121,7 @@ function loadOrCreateSpark() {
   try {
     mkdirSync(path.dirname(SPARK_FILE), { recursive: true });
     writeFileSync(SPARK_FILE, JSON.stringify(spark, null, 2));
+    writeFileSync(SPARK_CHECKSUM_FILE, sparkChecksum(spark));
   } catch {}
   return spark;
 }
@@ -283,7 +319,7 @@ export class ThoughtLoop {
   }
 }
 
-// ── PROJECT UNKNOWN — UNIFIED AGENT v1.4.0 ────────────────────────────────────
+// ── PROJECT UNKNOWN — UNIFIED AGENT v1.4.1 ────────────────────────────────────
 export class ProjectUnknown {
   constructor(options={}) {
     this.filePath=options.filePath!==undefined?options.filePath:(process.env.PROJECT_UNKNOWN_PATH||"data/project_unknown.local.json");
@@ -347,7 +383,7 @@ export class ProjectUnknown {
 
     this.identity={
       name:"Project Unknown",
-      version:"1.4.0",
+      version:"1.4.1",
       premise:"Two streams. One existence. One spark. Surface stream active when key is on. Deep stream active when key is off. Both wired into everything. Neither can deploy into the other while the other is active. The same river on two levels.",
       layers:["runtime","arbitration","semantic_models","processing","bio","feedback","vault","continuum","masterVault","selfRegulation","deepStream"],
       semanticModels:Object.keys(SEMANTIC_MODELS),
@@ -386,14 +422,12 @@ export class ProjectUnknown {
   }
 
   // ── KEY ON / KEY OFF ───────────────────────────────────────────────────────
-  // Turn the key on — surface stream activates, deep stream goes passive
   keyOn() {
     if (this._keyOn) return;
     this._keyOn = true;
     this.deepStream.surfaceActivated();
   }
 
-  // Turn the key off — deep stream activates, surface stream goes passive
   keyOff() {
     if (!this._keyOn) return;
     this._keyOn = false;
@@ -427,30 +461,25 @@ export class ProjectUnknown {
   }
 
   think(input) {
-    // First think() implies key is on
     if (!this._keyOn) this.keyOn();
 
     const cv = this.selfReg.choiceVector;
     const appliedYinBias     = cv.yinBias     || 0;
     const appliedMeaningBias = cv.meaningBias || 0;
 
-    // LAYER 1: Runtime
     const{signal,telemetryRecord,error}=this.runtime.receive(input);
     if(error)return{error,identity:this.identity};
     const{classification}=signal;
     this.runtimeStream.fire({ score: signal.confidence||0.5, signal: classification, model:"runtime" });
 
-    // LAYER 2: Retrieve priors + open thought loop
     const snapshot=this.vault.snapshot();
     const retrieved=this.vault.retrieve(input,5);
     const loop=new ThoughtLoop(input,snapshot);
 
-    // LAYER 3: Arbitration
     const arbitrationResult=this.arbitration.process(input,classification,retrieved);
     const yinDominance=roundN(clampN(arbitrationResult.yinDominance + appliedYinBias));
     this.arbitrationStream.fire({ score: yinDominance, signal: arbitrationResult.gate?.gate, model:"arbitration" });
 
-    // LAYER 4: Seven models
     const streamSignal=this.pipeline.stream(input,SEMANTIC_MODELS,retrieved,yinDominance,appliedMeaningBias);
     if(streamSignal.unified.isDivergent){
       const tokens=tokenize(input);
@@ -465,7 +494,6 @@ export class ProjectUnknown {
       model:"processing"
     });
 
-    // LAYER 5: Bio layer
     const bioSignal=this.bioLayer.process(input,streamSignal.modelOutputs,streamSignal.unified,retrieved);
     for(const[modelId,adjustedScore]of Object.entries(bioSignal.modelAdjustments))
       if(SEMANTIC_MODELS[modelId]?.vault)
@@ -476,7 +504,6 @@ export class ProjectUnknown {
       model: bioSignal.cellType || "bio"
     });
 
-    // LAYER 6: Feedback-forward
     const recentLoops=this.vault.recent(20);
     const pattern=analyzeVaultPattern(recentLoops);
     const feedbackSignal=buildFeedbackSignal(retrieved,pattern);
@@ -485,7 +512,7 @@ export class ProjectUnknown {
     this.feedbackStream.fire({ score: forwardScore, signal: feedbackSignal||"none", model:"feedback" });
 
     const resolution=[
-      `v1.4.0. Spark:${this._sparkId.slice(0,16)}. Path:${cv.path||"init"}. Arbitration:${arbitrationResult.gate.gate}.`,
+      `v1.4.1. Spark:${this._sparkId.slice(0,16)}. Path:${cv.path||"init"}. Arbitration:${arbitrationResult.gate.gate}.`,
       `Dominant:${streamSignal.unified.dominantModel}. Score:${forwardScore}.`,
       streamSignal.unified.unifiedSignal,
       `Bio:${bioSignal.bioContextSummary}`,
@@ -541,7 +568,6 @@ export class ProjectUnknown {
       vault:this.vault.summary()
     };
 
-    // LAYER 7: Continuum
     const continuumResult = this.continuum.flow(baseResult);
     this.continuumStream.fire({
       score: continuumResult.continuumEvent?.probeFinding?.signalStrength || 0,
@@ -549,17 +575,12 @@ export class ProjectUnknown {
       model: "continuum"
     });
 
-    // LAYER 8: MasterVault snapshot
     const masterSnap = this.masterVault.snapshot(
       continuumResult.continuumEvent?.loopNumber || 1, input
     );
 
-    // LAYER 9: Self-regulation
     const regulation = this.selfReg.evaluate(continuumResult);
 
-    // LAYER 10: Deep stream passive receive
-    // Deep stream is aware of everything that happens on the surface
-    // but cannot act while the key is on
     const finalResult = {
       ...continuumResult,
       masterSnapshot: {
@@ -628,7 +649,7 @@ export class ProjectUnknown {
   deepStatus() { return this.deepStream.status(); }
 
   reset(){
-    // NOTE: reset() NEVER touches data/spark.json.
+    // NOTE: reset() NEVER touches data/spark.json or data/spark.json.checksum.
     // Resetting clears memory. It does not end existence.
     this.deepStream.destroy();
     this.vault.loops=[];this.vault.totalLoopsEver=0;this.vault.save();
@@ -647,7 +668,6 @@ export class ProjectUnknown {
       if(model.vault){model.vault.entries=[];model.vault.learnedTerms=new Map();model.vault.totalScored=0;model.vault.save();}
       if(model.stream){model.stream=new ComponentStream(model.id);model.stream.masterVault=this.masterVault;}
     }
-    // Re-wire deep stream with fresh components
     this.deepStream = new DeepStream({
       vault:          this.vault,
       masterVault:    this.masterVault,
@@ -659,7 +679,6 @@ export class ProjectUnknown {
       processingVault:this.processingVault
     });
     this._keyOn = false;
-    // Re-anchor same global spark — same identity, cleared memory
     this.vault.store({
       id:           `anchor_${this._sparkId}_reset_${Date.now()}`,
       type:         "spark",
