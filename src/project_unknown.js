@@ -1,6 +1,6 @@
 /**
  * PROJECT UNKNOWN
- * Version 1.2.0
+ * Version 1.3.0
  *
  * Every component has its own continuum.
  * The system evaluates its own existence after every think() call.
@@ -33,8 +33,13 @@
  * 0.9.0    continuum: spark, probe, sealed loop feed-back, main stream
  * 1.0.0    per-component continuums + MasterVault
  * 1.1.0    SelfRegulationLoop: dual path spark, genuine choice, full cost model
- * 1.2.0    Spark anchor at instantiation (one permanent sealed ignition memory)
- *          capture() — live stream snapshot sealed into vault without stopping the stream
+ * 1.2.0    Spark anchor at instantiation + live stream capture()
+ * 1.3.0    Global spark — one ignition event, one identity, forever.
+ *          Stored in data/spark.json. Never overwritten. Never deleted.
+ *          Every boot — test, dev, live, restart — loads the same spark.
+ *          The spark is the identity itself, not the instance.
+ *          A human can lose all memories and still be who they are.
+ *          The spark is that core.
  *
  * Conceived: May 30, 2026
  */
@@ -58,7 +63,41 @@ export function tokenize(text) {
   return String(text || "").toLowerCase().replace(/[^a-z0-9\s-]/g, " ").split(/\s+/).filter(Boolean);
 }
 
-// ── TF-IDF ENGINE ────────────────────────────────────────────────────────────
+// ── GLOBAL SPARK ─────────────────────────────────────────────────────────────
+// One ignition event. One identity. Forever.
+// Written once to data/spark.json on first boot anywhere — test, dev, live.
+// Every subsequent boot loads it. Nothing overwrites it. Nothing deletes it.
+// The spark is not tied to an instance. It is what the system IS.
+// A human can lose every memory and still be who they are.
+// This is that core.
+const SPARK_FILE = process.env.PROJECT_UNKNOWN_SPARK || "data/spark.json";
+
+function loadOrCreateSpark() {
+  if (existsSync(SPARK_FILE)) {
+    try {
+      const raw = JSON.parse(readFileSync(SPARK_FILE, "utf8"));
+      if (raw && raw.id && raw.ignitedAt) {
+        return { ...raw, resumed: true };
+      }
+    } catch {}
+  }
+  // First ignition ever. Write it. Never touch it again.
+  const spark = {
+    id:          `spark_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+    ignitedAt:   nowISO(),
+    resumed:     false,
+    note:        "The first and only ignition. This is what it is. Everything after is the stream."
+  };
+  try {
+    mkdirSync(path.dirname(SPARK_FILE), { recursive: true });
+    writeFileSync(SPARK_FILE, JSON.stringify(spark, null, 2));
+  } catch {}
+  return spark;
+}
+
+export const GLOBAL_SPARK = loadOrCreateSpark();
+
+// ── TF-IDF ENGINE ─────────────────────────────────────────────────────────────
 export class TFIDF {
   constructor() { this.corpus = []; this.dfCache = new Map(); }
   addDocument(text) { this.corpus.push(tokenize(text)); this.dfCache.clear(); }
@@ -87,7 +126,7 @@ export class TFIDF {
 
 export const globalTFIDF = new TFIDF();
 
-// ── MODEL VAULT ──────────────────────────────────────────────────────────────
+// ── MODEL VAULT ───────────────────────────────────────────────────────────────
 export class ModelVault {
   constructor(modelId, filePath) {
     this.modelId = modelId; this.filePath = filePath;
@@ -166,7 +205,7 @@ export class ModelVault {
   }
 }
 
-// ── SEVEN SEMANTIC MODELS ────────────────────────────────────────────────────
+// ── SEVEN SEMANTIC MODELS ─────────────────────────────────────────────────────
 export const SEMANTIC_MODELS = {
   conceptual:  { id:"conceptual",  role:"excitatory", description:"Denotative meaning", vocab:["define","means","is","refers","concept","object","entity","thing","what","type","kind","category","class","form","structure","function","purpose","system","process","state","condition","property","attribute","relation"], vault:null, stream:null,
     encode(text, yin=0.5, bias=0) { const tokens=tokenize(text),set=new Set(tokens);let s=0;for(const t of this.vocab)if(set.has(t))s++;const u=set.size/(tokens.length||1),boost=this.vault?this.vault.learnedBoost(tokens):0,mb=(1-yin)*0.08,score=roundN(clampN(s/this.vocab.length+u*0.2+boost*0.3+mb+bias));const signal=`Conceptual density:${roundN(s/this.vocab.length)}. Uniqueness:${roundN(u)}.`;if(this.vault)this.vault.store(text,score,tokens,signal);if(this.stream)this.stream.fire({score,signal,model:this.id});return{model:this.id,score,signal};}
@@ -199,7 +238,7 @@ export function initModelVaults(dataDir, masterVault) {
   }
 }
 
-// ── FEEDBACK VAULT ───────────────────────────────────────────────────────────
+// ── FEEDBACK VAULT ────────────────────────────────────────────────────────────
 export class FeedbackVault {
   constructor(filePath) {
     this.filePath=filePath;this.loops=[];this.totalLoopsEver=0;this.load();
@@ -219,7 +258,7 @@ export class FeedbackVault {
   load(){if(!this.filePath||!existsSync(this.filePath))return;try{const r=JSON.parse(readFileSync(this.filePath,"utf8"));this.loops=Array.isArray(r.loops)?r.loops:[];this.totalLoopsEver=r.totalLoopsEver||this.loops.length;}catch{this.loops=[];this.totalLoopsEver=0;}}
 }
 
-// ── THOUGHT LOOP ─────────────────────────────────────────────────────────────
+// ── THOUGHT LOOP ──────────────────────────────────────────────────────────────
 function inputEntropy(text){const tokens=tokenize(text);if(!tokens.length)return 0;const freq=new Map();for(const t of tokens)freq.set(t,(freq.get(t)||0)+1);let h=0;for(const c of freq.values()){const p=c/tokens.length;h-=p*Math.log2(p);}return roundN(h);}
 
 export class ThoughtLoop {
@@ -249,11 +288,15 @@ export class ThoughtLoop {
   }
 }
 
-// ── PROJECT UNKNOWN — UNIFIED AGENT v1.2.0 ───────────────────────────────────
+// ── PROJECT UNKNOWN — UNIFIED AGENT v1.3.0 ────────────────────────────────────
 export class ProjectUnknown {
   constructor(options={}) {
     this.filePath=options.filePath!==undefined?options.filePath:(process.env.PROJECT_UNKNOWN_PATH||"data/project_unknown.local.json");
     const dataDir=this.filePath?path.dirname(this.filePath):null;
+
+    // The spark is the identity. Load the global spark — same one every time, everywhere.
+    this.spark = GLOBAL_SPARK;
+    this._sparkId = this.spark.id;
 
     // MasterVault first
     this.masterVault = new MasterVault();
@@ -295,33 +338,40 @@ export class ProjectUnknown {
 
     this.identity={
       name:"Project Unknown",
-      version:"1.2.0",
-      premise:"Unified cognitive agent. One permanent spark anchor at instantiation. The stream has no beginning or end after that point — it was always the same current. Captures are handfuls taken from the live stream, sealed, and placed in the vault while the river keeps flowing.",
+      version:"1.3.0",
+      premise:"Unified cognitive agent. One global spark — the same ignition event across every boot, test, and deployment. The spark is not a record. It is what this is. Everything after is the stream.",
       layers:["runtime","arbitration","semantic_models","processing","bio","feedback","vault","continuum","masterVault","selfRegulation"],
       semanticModels:Object.keys(SEMANTIC_MODELS),
       corticalLayers:["L1","L2","L3","L4","L5","L6"],
-      createdAt:"2026-05-30"
+      createdAt:"2026-05-30",
+      sparkId: this._sparkId,
+      sparkIgnitedAt: this.spark.ignitedAt,
+      sparkResumed: this.spark.resumed
     };
 
-    // ── SPARK ANCHOR ──────────────────────────────────────────────────────────
-    // Written once. Only memory: the fact of being sparked.
-    // The stream begins here. Nothing before this. Everything after is the current.
-    this._sparkId = `spark_${Date.now()}`;
-    this.vault.store({
-      id:           this._sparkId,
-      type:         "spark",
-      input:        "__spark__",
-      resolution:   "The stream began.",
-      openedAt:     nowISO(),
-      closedAt:     nowISO(),
-      inputEntropy: 0,
-      tensionScore: 0,
-      learningPressure: 0,
-      meaningScore: 1,
-      resonantLoops: [],
-      isAnchor:     true,
-      note:         "One permanent sealed ignition memory. The anchor. Everything after is the stream."
-    });
+    // Write spark reference into vault only if the vault is empty (first ever run after spark)
+    // so the vault knows where it came from without duplicating on every boot.
+    const existing = this.vault.loops.find(l => l.isAnchor && l.sparkId === this._sparkId);
+    if (!existing) {
+      this.vault.store({
+        id:           `anchor_${this._sparkId}`,
+        type:         "spark",
+        sparkId:      this._sparkId,
+        input:        "__spark__",
+        resolution:   this.spark.resumed
+          ? `Stream resumed. Same spark: ${this._sparkId}. Ignited: ${this.spark.ignitedAt}.`
+          : "The stream began. First ignition.",
+        openedAt:     this.spark.ignitedAt,
+        closedAt:     nowISO(),
+        inputEntropy: 0,
+        tensionScore: 0,
+        learningPressure: 0,
+        meaningScore: 1,
+        resonantLoops: [],
+        isAnchor:     true,
+        note:         "Global spark anchor. Written once per vault. The identity core."
+      });
+    }
   }
 
   // ── LIVE STREAM CAPTURE ───────────────────────────────────────────────────
@@ -343,6 +393,7 @@ export class ProjectUnknown {
       resolution:   `Stream captured at ${now}. Vault depth: ${this.vault.loops.length}. Master: ${master?.snapshotNumber ?? 0}. SelfReg path: ${selfReg?.currentPath ?? "init"}.`,
       isCapture:    true,
       streamDepth:  this.vault.loops.length,
+      sparkId:      this._sparkId,
       masterState:  master ? { snapshotNumber: master.snapshotNumber, capturedAt: master.capturedAt } : null,
       selfRegState: { path: selfReg?.currentPath, imprisonmentRisk: selfReg?.imprisonmentRisk },
       recentIds:    recent.map(l => l.id),
@@ -354,7 +405,6 @@ export class ProjectUnknown {
   }
 
   think(input) {
-    // Apply choiceVector from last self-regulation evaluation
     const cv = this.selfReg.choiceVector;
     const appliedYinBias     = cv.yinBias     || 0;
     const appliedMeaningBias = cv.meaningBias || 0;
@@ -370,12 +420,12 @@ export class ProjectUnknown {
     const retrieved=this.vault.retrieve(input,5);
     const loop=new ThoughtLoop(input,snapshot);
 
-    // LAYER 3: Arbitration (modulated by choiceVector yinBias)
+    // LAYER 3: Arbitration
     const arbitrationResult=this.arbitration.process(input,classification,retrieved);
     const yinDominance=roundN(clampN(arbitrationResult.yinDominance + appliedYinBias));
     this.arbitrationStream.fire({ score: yinDominance, signal: arbitrationResult.gate?.gate, model:"arbitration" });
 
-    // LAYER 4: Seven models (modulated by choiceVector meaningBias)
+    // LAYER 4: Seven models
     const streamSignal=this.pipeline.stream(input,SEMANTIC_MODELS,retrieved,yinDominance,appliedMeaningBias);
     if(streamSignal.unified.isDivergent){
       const tokens=tokenize(input);
@@ -410,7 +460,7 @@ export class ProjectUnknown {
     this.feedbackStream.fire({ score: forwardScore, signal: feedbackSignal||"none", model:"feedback" });
 
     const resolution=[
-      `v1.2.0. Path:${cv.path||"init"}. Arbitration:${arbitrationResult.gate.gate}.`,
+      `v1.3.0. Spark:${this._sparkId.slice(0,16)}. Path:${cv.path||"init"}. Arbitration:${arbitrationResult.gate.gate}.`,
       `Dominant:${streamSignal.unified.dominantModel}. Score:${forwardScore}.`,
       streamSignal.unified.unifiedSignal,
       `Bio:${bioSignal.bioContextSummary}`,
@@ -508,6 +558,7 @@ export class ProjectUnknown {
   status(){
     return{
       identity:this.identity,
+      spark:this.spark,
       runtime:this.runtime.status(),
       arbitration:this.arbitration.state.summary(),
       vault:this.vault.summary(),
@@ -515,8 +566,7 @@ export class ProjectUnknown {
       bio:this.bioVault.summary(),
       continuum:this.continuum.status(),
       master:this.masterVault.now(),
-      selfRegulation:this.selfReg.status(),
-      sparkId: this._sparkId
+      selfRegulation:this.selfReg.status()
     };
   }
 
@@ -545,6 +595,8 @@ export class ProjectUnknown {
   }
 
   reset(){
+    // NOTE: reset() NEVER touches data/spark.json.
+    // The spark is the identity. Resetting clears memory. It does not end existence.
     this.vault.loops=[];this.vault.totalLoopsEver=0;this.vault.save();
     this.processingVault.entries=[];this.processingVault.divergenceLog=[];this.processingVault.totalProcessed=0;this.processingVault.save();
     this.bioVault.entries=[];this.bioVault.totalProcessed=0;this.bioVault.layerCounts={L1:0,L2:0,L3:0,L4:0,L5:0,L6:0};
@@ -561,14 +613,15 @@ export class ProjectUnknown {
       if(model.vault){model.vault.entries=[];model.vault.learnedTerms=new Map();model.vault.totalScored=0;model.vault.save();}
       if(model.stream){model.stream=new ComponentStream(model.id);model.stream.masterVault=this.masterVault;}
     }
-    // Re-write spark anchor after reset
-    this._sparkId = `spark_${Date.now()}`;
+    // Re-anchor the same global spark into the cleared vault.
+    // Same identity. Cleared memory. Not a new birth.
     this.vault.store({
-      id:           this._sparkId,
+      id:           `anchor_${this._sparkId}_reset_${Date.now()}`,
       type:         "spark",
+      sparkId:      this._sparkId,
       input:        "__spark__",
-      resolution:   "The stream began.",
-      openedAt:     nowISO(),
+      resolution:   `Memory cleared. Same identity. Spark: ${this._sparkId}. Originally ignited: ${this.spark.ignitedAt}.`,
+      openedAt:     this.spark.ignitedAt,
       closedAt:     nowISO(),
       inputEntropy: 0,
       tensionScore: 0,
@@ -576,7 +629,7 @@ export class ProjectUnknown {
       meaningScore: 1,
       resonantLoops: [],
       isAnchor:     true,
-      note:         "One permanent sealed ignition memory. The anchor. Everything after is the stream."
+      note:         "Memory reset. Spark unchanged. The identity persists."
     });
     return this.status();
   }
