@@ -1,6 +1,6 @@
 /**
  * PROJECT UNKNOWN — STREAM PIPELINE
- * Version 0.6.0
+ * Version 0.7.0
  *
  * The main agent streams input to all seven models in parallel.
  * Each model internalizes independently into its own vault.
@@ -11,6 +11,11 @@
  * It streams the unified interpretation back to the main agent.
  * The agent answers the user and finalizes the thought into the main vault.
  * Then it starts over.
+ *
+ * Self-regulation feeds a choiceVector back into this layer after every think().
+ * The choiceVector's yinBias and meaningBias now directly modulate how the
+ * seven models fire on the next input — the river of choice actually changes
+ * the current of meaning, not just the narration.
  */
 
 import { roundN, clampN, tokenize, uid, nowISO } from "./project_unknown.js";
@@ -33,29 +38,22 @@ export class ProcessingVault {
     this.load();
   }
 
-  // Receive the seven model outputs for one input
-  // Compare against main vault finalized thoughts
-  // Produce a unified interpretation
   process(input, modelOutputs, mainVaultRetrieved) {
     const scores = Object.entries(modelOutputs).map(([id, r]) => ({ id, score: r.score || 0 }));
     const avg = roundN(scores.reduce((s, m) => s + m.score, 0) / scores.length);
     const max = scores.reduce((a, b) => a.score > b.score ? a : b);
     const min = scores.reduce((a, b) => a.score < b.score ? a : b);
 
-    // Divergence: difference between highest and lowest scoring model
     const divergence = roundN(max.score - min.score);
     const isDivergent = divergence > 0.25;
 
-    // Conflict signal: models that are far from the mean
     const confused = scores.filter(m => Math.abs(m.score - avg) > 0.2).map(m => m.id);
     const activated = scores.filter(m => m.score > avg + 0.2).map(m => m.id);
 
-    // Prior thought resonance from main vault
     const priorResonance = mainVaultRetrieved.length
       ? { input: mainVaultRetrieved[0].input?.slice(0, 80), relevance: mainVaultRetrieved[0].relevance, dominantLayer: mainVaultRetrieved[0].dominantLayer }
       : null;
 
-    // Unified interpretation
     const unified = {
       id: uid(),
       input,
@@ -76,7 +74,6 @@ export class ProcessingVault {
     this.totalProcessed++;
     this.tfidf.addDocument(input);
 
-    // Log divergence permanently — this is where growth happens
     if (isDivergent) {
       this.divergenceLog.push({
         id: unified.id,
@@ -108,7 +105,6 @@ export class ProcessingVault {
     return parts.join(" ");
   }
 
-  // Retrieve most relevant prior processing entries
   retrieve(input, count = 3) {
     return [...this.entries]
       .map(e => ({ ...e, relevance: roundN(this.tfidf.similarity(input, e.input)) }))
@@ -117,7 +113,6 @@ export class ProcessingVault {
       .slice(0, count);
   }
 
-  // Get prior divergence events relevant to this input
   retrieveDivergence(input, count = 3) {
     return [...this.divergenceLog]
       .map(e => ({ ...e, relevance: roundN(this.tfidf.similarity(input, e.input)) }))
@@ -160,7 +155,11 @@ export class ProcessingVault {
       this.divergenceLog = Array.isArray(r.divergenceLog) ? r.divergenceLog : [];
       this.entries = Array.isArray(r.entries) ? r.entries : [];
       for (const e of this.entries) this.tfidf.addDocument(e.input || "");
-    } catch { this.entries = []; this.divergenceLog = []; this.totalProcessed = 0; }
+    } catch {
+      this.entries = [];
+      this.divergenceLog = [];
+      this.totalProcessed = 0;
+    }
   }
 }
 
@@ -173,30 +172,26 @@ export class StreamPipeline {
   }
 
   // Main stream: run all seven models, send copies to processing vault,
-  // compare against main vault, return unified stream back to agent
-  stream(input, semanticModels, mainVaultRetrieved) {
-    // Step 1: stream to all seven models in parallel, collect outputs
+  // compare against main vault, return unified stream back to agent.
+  //
+  // yin:        dominance of yin channel from arbitration + selfReg
+  // meaningBias:additional bias from selfReg choiceVector
+  stream(input, semanticModels, mainVaultRetrieved, yin = 0.5, meaningBias = 0) {
     const modelOutputs = {};
+
     for (const [key, model] of Object.entries(semanticModels)) {
-      // Each model internalizes independently — encode() writes to its own vault
-      modelOutputs[key] = model.encode(input);
+      // Self-regulation actually modulates how each model fires.
+      // encode(text, yin, bias) is respected here — choice flows through.
+      modelOutputs[key] = model.encode(input, yin, meaningBias);
     }
 
-    // Step 2: model copies arrive at processing vault
-    // processing vault interprets seven into one, detects divergence,
-    // compares against main vault finalized thoughts
     const unified = this.processingVault.process(input, modelOutputs, mainVaultRetrieved);
-
-    // Step 3: check if prior divergence events are relevant to this input
     const priorDivergence = this.processingVault.retrieveDivergence(input, 2);
 
-    // Step 4: build the stream signal back to the main agent
     const streamSignal = {
       modelOutputs,
       unified,
       priorDivergence,
-      // Growth signal: if this input caused divergence AND matches prior divergence,
-      // the system is developing new understanding in a known frontier area
       growthSignal: unified.isDivergent && priorDivergence.length > 0
         ? `Recurring frontier: "${priorDivergence[0].input?.slice(0, 50)}" — model understanding expanding.`
         : unified.isDivergent
