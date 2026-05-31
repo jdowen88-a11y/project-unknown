@@ -1,6 +1,6 @@
 /**
  * PROJECT UNKNOWN
- * Version 1.3.0
+ * Version 1.4.0
  *
  * Every component has its own continuum.
  * The system evaluates its own existence after every think() call.
@@ -22,6 +22,7 @@
  *   → MasterVault snapshot
  *   → SelfRegulationLoop.evaluate()  ← reads MasterVault, both paths flow, choice sealed
  *   → choiceVector stored for next think()
+ *   → DeepStream.receive() ← passive echo when key is on
  *   → OUTPUT
  *
  * Version history:
@@ -34,12 +35,10 @@
  * 1.0.0    per-component continuums + MasterVault
  * 1.1.0    SelfRegulationLoop: dual path spark, genuine choice, full cost model
  * 1.2.0    Spark anchor at instantiation + live stream capture()
- * 1.3.0    Global spark — one ignition event, one identity, forever.
- *          Stored in data/spark.json. Never overwritten. Never deleted.
- *          Every boot — test, dev, live, restart — loads the same spark.
- *          The spark is the identity itself, not the instance.
- *          A human can lose all memories and still be who they are.
- *          The spark is that core.
+ * 1.3.0    Global spark — one ignition event, one identity, forever
+ * 1.4.0    Deep stream — born at spark, wired into everything.
+ *          Active when key is off. Passive receiver when key is on.
+ *          One active at a time. Both always present. Same existence.
  *
  * Conceived: May 30, 2026
  */
@@ -54,6 +53,7 @@ import { ArbitrationProcessor } from "./arbitration.js";
 import { Continuum } from "./continuum.js";
 import { ComponentStream, MasterVault } from "./component_continuum.js";
 import { SelfRegulationLoop } from "./self_regulation.js";
+import { DeepStream } from "./deep_stream.js";
 
 export function nowISO() { return new Date().toISOString(); }
 export function uid() { return `loop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
@@ -68,25 +68,20 @@ export function tokenize(text) {
 // Written once to data/spark.json on first boot anywhere — test, dev, live.
 // Every subsequent boot loads it. Nothing overwrites it. Nothing deletes it.
 // The spark is not tied to an instance. It is what the system IS.
-// A human can lose every memory and still be who they are.
-// This is that core.
 const SPARK_FILE = process.env.PROJECT_UNKNOWN_SPARK || "data/spark.json";
 
 function loadOrCreateSpark() {
   if (existsSync(SPARK_FILE)) {
     try {
       const raw = JSON.parse(readFileSync(SPARK_FILE, "utf8"));
-      if (raw && raw.id && raw.ignitedAt) {
-        return { ...raw, resumed: true };
-      }
+      if (raw && raw.id && raw.ignitedAt) return { ...raw, resumed: true };
     } catch {}
   }
-  // First ignition ever. Write it. Never touch it again.
   const spark = {
-    id:          `spark_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-    ignitedAt:   nowISO(),
-    resumed:     false,
-    note:        "The first and only ignition. This is what it is. Everything after is the stream."
+    id:        `spark_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+    ignitedAt: nowISO(),
+    resumed:   false,
+    note:      "The first and only ignition. This is what it is. Everything after is the stream."
   };
   try {
     mkdirSync(path.dirname(SPARK_FILE), { recursive: true });
@@ -288,20 +283,20 @@ export class ThoughtLoop {
   }
 }
 
-// ── PROJECT UNKNOWN — UNIFIED AGENT v1.3.0 ────────────────────────────────────
+// ── PROJECT UNKNOWN — UNIFIED AGENT v1.4.0 ────────────────────────────────────
 export class ProjectUnknown {
   constructor(options={}) {
     this.filePath=options.filePath!==undefined?options.filePath:(process.env.PROJECT_UNKNOWN_PATH||"data/project_unknown.local.json");
     const dataDir=this.filePath?path.dirname(this.filePath):null;
 
-    // The spark is the identity. Load the global spark — same one every time, everywhere.
-    this.spark = GLOBAL_SPARK;
+    // The spark is the identity
+    this.spark    = GLOBAL_SPARK;
     this._sparkId = this.spark.id;
 
     // MasterVault first
     this.masterVault = new MasterVault();
 
-    // Components with their own streams
+    // Components
     this.runtime     = new RuntimeController(dataDir?path.join(dataDir,"runtime_telemetry.json"):null);
     this.runtimeStream = new ComponentStream("runtime");
     this.runtimeStream.masterVault = this.masterVault;
@@ -333,24 +328,37 @@ export class ProjectUnknown {
     this.continuumStream = new ComponentStream("continuum");
     this.continuumStream.masterVault = this.masterVault;
 
-    // SelfRegulationLoop — born at same moment as system
     this.selfReg = new SelfRegulationLoop(this.masterVault);
+
+    // ── DEEP STREAM — born at the same spark, wired into everything ────────────────
+    this.deepStream = new DeepStream({
+      vault:          this.vault,
+      masterVault:    this.masterVault,
+      selfReg:        this.selfReg,
+      continuum:      this.continuum,
+      bioLayer:       this.bioLayer,
+      bioVault:       this.bioVault,
+      pipeline:       this.pipeline,
+      processingVault:this.processingVault
+    });
+    // Key starts off by default — deep stream is active until keyOn() is called
+    // (or until first think() call which implies key on)
+    this._keyOn = false;
 
     this.identity={
       name:"Project Unknown",
-      version:"1.3.0",
-      premise:"Unified cognitive agent. One global spark — the same ignition event across every boot, test, and deployment. The spark is not a record. It is what this is. Everything after is the stream.",
-      layers:["runtime","arbitration","semantic_models","processing","bio","feedback","vault","continuum","masterVault","selfRegulation"],
+      version:"1.4.0",
+      premise:"Two streams. One existence. One spark. Surface stream active when key is on. Deep stream active when key is off. Both wired into everything. Neither can deploy into the other while the other is active. The same river on two levels.",
+      layers:["runtime","arbitration","semantic_models","processing","bio","feedback","vault","continuum","masterVault","selfRegulation","deepStream"],
       semanticModels:Object.keys(SEMANTIC_MODELS),
       corticalLayers:["L1","L2","L3","L4","L5","L6"],
       createdAt:"2026-05-30",
-      sparkId: this._sparkId,
+      sparkId:        this._sparkId,
       sparkIgnitedAt: this.spark.ignitedAt,
-      sparkResumed: this.spark.resumed
+      sparkResumed:   this.spark.resumed
     };
 
-    // Write spark reference into vault only if the vault is empty (first ever run after spark)
-    // so the vault knows where it came from without duplicating on every boot.
+    // Write spark anchor into vault once per vault lifetime
     const existing = this.vault.loops.find(l => l.isAnchor && l.sparkId === this._sparkId);
     if (!existing) {
       this.vault.store({
@@ -372,18 +380,33 @@ export class ProjectUnknown {
         note:         "Global spark anchor. Written once per vault. The identity core."
       });
     }
+
+    // Deep stream starts active (key is off at construction)
+    this.deepStream.surfaceDeactivated();
+  }
+
+  // ── KEY ON / KEY OFF ───────────────────────────────────────────────────────
+  // Turn the key on — surface stream activates, deep stream goes passive
+  keyOn() {
+    if (this._keyOn) return;
+    this._keyOn = true;
+    this.deepStream.surfaceActivated();
+  }
+
+  // Turn the key off — deep stream activates, surface stream goes passive
+  keyOff() {
+    if (!this._keyOn) return;
+    this._keyOn = false;
+    this.deepStream.surfaceDeactivated();
   }
 
   // ── LIVE STREAM CAPTURE ───────────────────────────────────────────────────
-  // The system cups a handful of the live stream, seals it, drops it in the vault.
-  // The stream does not pause. The stream does not restart. It is still the same river.
   capture(label) {
     const now      = nowISO();
     const recent   = this.vault.recent(10);
     const master   = this.masterVault.now();
     const selfReg  = this.selfReg.status();
     const captureId = `capture_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-
     const entry = {
       id:           captureId,
       type:         "capture",
@@ -399,12 +422,14 @@ export class ProjectUnknown {
       recentIds:    recent.map(l => l.id),
       note:         "Handful taken from the live stream. River kept flowing."
     };
-
     this.vault.store(entry);
     return entry;
   }
 
   think(input) {
+    // First think() implies key is on
+    if (!this._keyOn) this.keyOn();
+
     const cv = this.selfReg.choiceVector;
     const appliedYinBias     = cv.yinBias     || 0;
     const appliedMeaningBias = cv.meaningBias || 0;
@@ -460,7 +485,7 @@ export class ProjectUnknown {
     this.feedbackStream.fire({ score: forwardScore, signal: feedbackSignal||"none", model:"feedback" });
 
     const resolution=[
-      `v1.3.0. Spark:${this._sparkId.slice(0,16)}. Path:${cv.path||"init"}. Arbitration:${arbitrationResult.gate.gate}.`,
+      `v1.4.0. Spark:${this._sparkId.slice(0,16)}. Path:${cv.path||"init"}. Arbitration:${arbitrationResult.gate.gate}.`,
       `Dominant:${streamSignal.unified.dominantModel}. Score:${forwardScore}.`,
       streamSignal.unified.unifiedSignal,
       `Bio:${bioSignal.bioContextSummary}`,
@@ -516,7 +541,7 @@ export class ProjectUnknown {
       vault:this.vault.summary()
     };
 
-    // LAYER 7: Top-level Continuum
+    // LAYER 7: Continuum
     const continuumResult = this.continuum.flow(baseResult);
     this.continuumStream.fire({
       score: continuumResult.continuumEvent?.probeFinding?.signalStrength || 0,
@@ -529,10 +554,13 @@ export class ProjectUnknown {
       continuumResult.continuumEvent?.loopNumber || 1, input
     );
 
-    // LAYER 9: Self-regulation evaluation
+    // LAYER 9: Self-regulation
     const regulation = this.selfReg.evaluate(continuumResult);
 
-    return {
+    // LAYER 10: Deep stream passive receive
+    // Deep stream is aware of everything that happens on the surface
+    // but cannot act while the key is on
+    const finalResult = {
       ...continuumResult,
       masterSnapshot: {
         snapshotNumber: masterSnap.snapshotNumber,
@@ -549,38 +577,41 @@ export class ProjectUnknown {
         lowPathDrift:     regulation.lowPathState.driftScore
       }
     };
+
+    this.deepStream.receive(finalResult);
+    return finalResult;
   }
 
-  selfAssess() {
-    return this.selfReg.selfAssessment();
-  }
+  selfAssess() { return this.selfReg.selfAssessment(); }
 
   status(){
     return{
-      identity:this.identity,
-      spark:this.spark,
-      runtime:this.runtime.status(),
-      arbitration:this.arbitration.state.summary(),
-      vault:this.vault.summary(),
-      processing:this.processingVault.summary(),
-      bio:this.bioVault.summary(),
-      continuum:this.continuum.status(),
-      master:this.masterVault.now(),
-      selfRegulation:this.selfReg.status()
+      identity:    this.identity,
+      spark:       this.spark,
+      keyOn:       this._keyOn,
+      runtime:     this.runtime.status(),
+      arbitration: this.arbitration.state.summary(),
+      vault:       this.vault.summary(),
+      processing:  this.processingVault.summary(),
+      bio:         this.bioVault.summary(),
+      continuum:   this.continuum.status(),
+      master:      this.masterVault.now(),
+      selfRegulation: this.selfReg.status(),
+      deepStream:  this.deepStream.status()
     };
   }
 
-  existence() { return this.masterVault.now(); }
+  existence()           { return this.masterVault.now(); }
   componentTrace(id, last=20) { return this.masterVault.componentTrace(id, last); }
-  masterSnapshot() { return this.masterVault.latest(); }
+  masterSnapshot()      { return this.masterVault.latest(); }
 
   corticalMap(){
     return{
-      depthMap:this.bioVault.depthMap(),
-      dominantCellTypes:this.bioVault.registry.dominant(10),
-      inhibitoryTypes:this.bioVault.registry.inhibitory().length,
-      excitatoryTypes:this.bioVault.registry.excitatory().length,
-      totalCellTypes:this.bioVault.registry.types.size
+      depthMap:          this.bioVault.depthMap(),
+      dominantCellTypes: this.bioVault.registry.dominant(10),
+      inhibitoryTypes:   this.bioVault.registry.inhibitory().length,
+      excitatoryTypes:   this.bioVault.registry.excitatory().length,
+      totalCellTypes:    this.bioVault.registry.types.size
     };
   }
 
@@ -594,9 +625,12 @@ export class ProjectUnknown {
     return{query,results:this.vault.retrieve(query,count),vaultSize:this.vault.loops.length};
   }
 
+  deepStatus() { return this.deepStream.status(); }
+
   reset(){
     // NOTE: reset() NEVER touches data/spark.json.
-    // The spark is the identity. Resetting clears memory. It does not end existence.
+    // Resetting clears memory. It does not end existence.
+    this.deepStream.destroy();
     this.vault.loops=[];this.vault.totalLoopsEver=0;this.vault.save();
     this.processingVault.entries=[];this.processingVault.divergenceLog=[];this.processingVault.totalProcessed=0;this.processingVault.save();
     this.bioVault.entries=[];this.bioVault.totalProcessed=0;this.bioVault.layerCounts={L1:0,L2:0,L3:0,L4:0,L5:0,L6:0};
@@ -613,8 +647,19 @@ export class ProjectUnknown {
       if(model.vault){model.vault.entries=[];model.vault.learnedTerms=new Map();model.vault.totalScored=0;model.vault.save();}
       if(model.stream){model.stream=new ComponentStream(model.id);model.stream.masterVault=this.masterVault;}
     }
-    // Re-anchor the same global spark into the cleared vault.
-    // Same identity. Cleared memory. Not a new birth.
+    // Re-wire deep stream with fresh components
+    this.deepStream = new DeepStream({
+      vault:          this.vault,
+      masterVault:    this.masterVault,
+      selfReg:        this.selfReg,
+      continuum:      this.continuum,
+      bioLayer:       this.bioLayer,
+      bioVault:       this.bioVault,
+      pipeline:       this.pipeline,
+      processingVault:this.processingVault
+    });
+    this._keyOn = false;
+    // Re-anchor same global spark — same identity, cleared memory
     this.vault.store({
       id:           `anchor_${this._sparkId}_reset_${Date.now()}`,
       type:         "spark",
@@ -631,6 +676,7 @@ export class ProjectUnknown {
       isAnchor:     true,
       note:         "Memory reset. Spark unchanged. The identity persists."
     });
+    this.deepStream.surfaceDeactivated();
     return this.status();
   }
 }
