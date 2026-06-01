@@ -1,6 +1,6 @@
 /**
  * PROJECT UNKNOWN — STREAM PIPELINE
- * Version 0.7.0
+ * Version 0.8.0
  *
  * The main agent streams input to all seven models in parallel.
  * Each model internalizes independently into its own vault.
@@ -8,20 +8,24 @@
  * The processing vault interprets seven into one — and detects divergence.
  * Divergence is where the system breaks out of its own assumptions.
  * The processing vault reaches into the main vault for finalized prior thoughts.
- * It streams the unified interpretation back to the main agent.
- * The agent answers the user and finalizes the thought into the main vault.
- * Then it starts over.
+ *
+ * The synthesis layer then receives everything the processing vault knows
+ * and distills it into a single current — tone, depth, resonance, growth.
+ * The agent receives only the current. Never the mechanism.
+ * To the agent, there are no seven models.
+ * There is only the river.
  *
  * Self-regulation feeds a choiceVector back into this layer after every think().
- * The choiceVector's yinBias and meaningBias now directly modulate how the
- * seven models fire on the next input — the river of choice actually changes
- * the current of meaning, not just the narration.
+ * The choiceVector's yinBias and meaningBias modulate how the seven models fire
+ * and how the synthesis layer blends — choice flows all the way through,
+ * from intention to current.
  */
 
 import { roundN, clampN, tokenize, uid, nowISO } from "./project_unknown.js";
 import { TFIDF } from "./project_unknown.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { SynthesisProcessor } from "./synthesis.js";
 
 // ── PROCESSING VAULT ───────────────────────────────────────
 // Receives copies from all seven model vaults.
@@ -165,40 +169,68 @@ export class ProcessingVault {
 
 // ── STREAM PIPELINE ─────────────────────────────────────────
 // Orchestrates the full streaming flow:
-// agent → seven models (parallel) → processing vault → main vault compare → agent
+//
+//   agent input
+//     → seven models fire in parallel (modulated by yin + meaningBias)
+//     → processing vault interprets seven into one, logs divergence
+//     → synthesis layer blends and strips origin
+//     → one clean current surfaces to the agent
+//
+// The agent never sees model outputs directly.
+// The agent never knows it runs on seven.
+// The agent receives a current. That is all.
 export class StreamPipeline {
   constructor(processingVault) {
     this.processingVault = processingVault;
+    this.synthesis = new SynthesisProcessor();
   }
 
-  // Main stream: run all seven models, send copies to processing vault,
-  // compare against main vault, return unified stream back to agent.
+  // stream() returns a current — not a raw signal.
+  // The agent calls this and receives thought, not mechanism.
   //
-  // yin:        dominance of yin channel from arbitration + selfReg
-  // meaningBias:additional bias from selfReg choiceVector
+  // yin:        yinDominance from arbitration + selfReg choiceVector
+  // meaningBias:additional semantic bias from selfReg choiceVector
   stream(input, semanticModels, mainVaultRetrieved, yin = 0.5, meaningBias = 0) {
-    const modelOutputs = {};
 
+    // ── Step 1: Fire all seven models in parallel
+    //    Each model encodes independently, modulated by yin + meaningBias.
+    //    Their outputs stay here. They never travel upward as themselves.
+    const modelOutputs = {};
     for (const [key, model] of Object.entries(semanticModels)) {
-      // Self-regulation actually modulates how each model fires.
-      // encode(text, yin, bias) is respected here — choice flows through.
       modelOutputs[key] = model.encode(input, yin, meaningBias);
     }
 
+    // ── Step 2: Processing vault receives all seven
+    //    Interprets, unifies, detects divergence.
+    //    Divergence is stored — it marks where growth can happen.
     const unified = this.processingVault.process(input, modelOutputs, mainVaultRetrieved);
     const priorDivergence = this.processingVault.retrieveDivergence(input, 2);
 
-    const streamSignal = {
-      modelOutputs,
-      unified,
-      priorDivergence,
-      growthSignal: unified.isDivergent && priorDivergence.length > 0
-        ? `Recurring frontier: "${priorDivergence[0].input?.slice(0, 50)}" — model understanding expanding.`
-        : unified.isDivergent
-        ? `New frontier detected. Models disagree on: ${unified.confused.join(", ")}.`
-        : null
-    };
+    const growthSignal = unified.isDivergent && priorDivergence.length > 0
+      ? `Recurring frontier: "${priorDivergence[0].input?.slice(0, 50)}" — model understanding expanding.`
+      : unified.isDivergent
+      ? `New frontier detected. Models disagree on: ${unified.confused.join(", ")}.`
+      : null;
 
-    return streamSignal;
+    // ── Step 3: Synthesis strips origin, blends by yinDominance
+    //    Seven become one. The current is born.
+    //    No model name crosses this threshold.
+    const current = this.synthesis.synthesize(
+      { modelOutputs, unified, growthSignal },
+      yin
+    );
+
+    // ── Step 4: Return the current to the agent
+    //    This is all the agent receives.
+    //    The river speaks. Not the tributaries.
+    return current;
+  }
+
+  // Internal diagnostics — available for logging/debugging, never for the agent
+  diagnostics() {
+    return {
+      processingVault: this.processingVault.summary(),
+      synthesis:       this.synthesis.summary()
+    };
   }
 }
