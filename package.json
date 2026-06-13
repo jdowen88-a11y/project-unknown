@@ -9,12 +9,13 @@
   },
   "scripts": {
     "start": "node src/cli.js",
-    "test": "node src/test.js"
+    "test": "node src/test.js",
+    "agnostos:spark": "node src/agnostos/index.js"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": ["ai", "cognition", "semantic", "vault", "identity"],
+  "keywords": ["ai", "cognition", "semantic", "vault", "identity", "agnostos", "origin"],
   "author": "jdowen88-a11y",
   "license": "UNLICENSED",
   "private": true
