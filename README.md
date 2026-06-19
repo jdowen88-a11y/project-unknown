@@ -53,6 +53,20 @@ Both streams share the same identity, vault, and infrastructure. One is active a
 
 ---
 
+## Agnostos module
+
+Agnostos is included as an isolated module under `src/agnostos/`.
+
+It is not activated automatically during normal Project Unknown startup.
+
+Manual run:
+
+```bash
+npm run agnostos:spark
+```
+
+---
+
 ## Running it
 
 ```bash
