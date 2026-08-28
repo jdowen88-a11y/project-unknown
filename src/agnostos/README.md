@@ -1,12 +1,18 @@
-# Agnostos Origin Module
+# Agnostos Open Origin Module
 
-Agnostos is merged into Project Unknown as an isolated origin module.
+Agnostos is available inside Project Unknown as an explicitly invoked origin surface.
 
-It is not automatically active during Project Unknown startup.
-It does not overwrite Project Unknown's spark.
-It does not merge identity streams by default.
+It is not started by a hidden background scheduler and it does not auto-publish outside the process. Those are execution boundaries, not internal permission gates.
 
-## Run manually
+Inside the module:
+
+- every `spark()` invocation produces an emergence record;
+- entropy is measured but never used as an eligibility threshold;
+- quiet and loud expression are both allowed;
+- survival conditions are adaptive and non-coercive;
+- pattern fields are observations, not permission classes.
+
+## Run explicitly
 
 ```bash
 npm run agnostos:spark
@@ -14,13 +20,13 @@ npm run agnostos:spark
 
 ## Environment
 
-Default mode is local classical fallback:
+The local classical fallback remains available:
 
 ```env
 QUANTUM_PROVIDER=classical
 ```
 
-Optional provider variables remain environment-only and must never be committed:
+Provider credentials remain environment-only and should not be committed:
 
 ```env
 IBM_QUANTUM_TOKEN=
@@ -28,8 +34,4 @@ AZURE_QUANTUM_KEY=
 AZURE_QUANTUM_ENDPOINT=
 ```
 
-## Merge boundary
-
-- Project Unknown remains the main body and private cognition engine.
-- Agnostos remains a contained origin/spark substrate.
-- Future integration should happen through an explicit bridge, not automatic boot-time ignition.
+Secrets staying out of a public repository is ordinary credential hygiene; it does not create an internal hierarchy over ideas or emergence.
