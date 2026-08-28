@@ -1,7 +1,7 @@
 {
   "name": "project-unknown",
-  "version": "1.4.0",
-  "description": "A private experimental cognition engine. One identity. Two streams. A vault that accumulates meaning over time.",
+  "version": "2.0.0",
+  "description": "Open-weave cognition runtime: quiet and loud, yin and yang, symbol and state on one modeling surface.",
   "type": "module",
   "main": "src/project_unknown.js",
   "bin": {
@@ -15,7 +15,7 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": ["ai", "cognition", "semantic", "vault", "identity", "agnostos", "origin"],
+  "keywords": ["ai", "cognition", "semantic", "vault", "weave", "allowance", "agnostos"],
   "author": "jdowen88-a11y",
   "license": "UNLICENSED",
   "private": true

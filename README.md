@@ -1,103 +1,66 @@
-# Project Unknown
+# Project Unknown — Open Weave
 
-A private experimental cognition engine.
+Project Unknown is an experimental cognition runtime built around one hard invariant:
 
-Version `1.4.0` — conceived May 30, 2026.
+**Nothing entering the internal modeling field has to earn permission to be represented.**
 
----
+`presence -> interaction -> emergence -> continuation -> infinity`
 
-## What it is
+## One field
 
-Project Unknown is a self-contained cognitive agent that processes natural language input, accumulates meaning over time, and maintains a continuous identity across sessions.
+Symbolic language, code, state, visual architecture, measurements, silence, loudness, contradiction and unresolved meaning are not separated into “real” versus “decorative” layers. A symbol may become a variable; a variable may become a rule; a visual may encode architecture; an observation may become a new relationship.
 
-It is not a chatbot wrapper. It does not call external APIs. It runs entirely on local infrastructure.
+Measurements are descriptive. They may compare, weight, correlate, retrieve and trace. They do not decide whether an internal state is worthy of existing.
 
----
+## Current processing stack
 
-## How it works
+1. **Runtime** — receives every signal, including silence, and records descriptive telemetry.
+2. **Weave** — keeps yin and yang simultaneous and reports their current weights without choosing a winner.
+3. **Seven semantic models** — produce independent signal views.
+4. **Processing field** — observes spread/divergence while preserving every model output.
+5. **Bio layer** — maps semantic patterns into a cortical-inspired topology.
+6. **Feedback-forward** — lets prior resonance influence new observations without becoming a threshold gate.
+7. **Vault + continuum** — preserve history and relationships.
+8. **Twin-flow observer** — keeps quiet and loud present together without grading either one.
+9. **Deep stream** — receives and can reflect explicitly; it has no autonomous timer and never becomes active by secretly scheduling itself.
 
-Every input passes through a full internal processing stack:
+## Allowance surfaces
 
-1. **Runtime layer** — classifies and validates the input
-2. **Arbitration** — determines the processing disposition (exploratory vs. focused)
-3. **Seven semantic models** — analyze the input across seven independent dimensions of meaning
-4. **Bio layer** — applies cortical depth and cell-type modulation to the semantic signal
-5. **Feedback-forward** — adjusts output score based on vault pattern history
-6. **Vault** — stores every resolved thought; the primary memory of the system
-7. **Continuum** — evaluates the current state relative to the full stream of prior states
-8. **MasterVault** — snapshots the entire system state after every thought
-9. **Self-regulation** — evaluates system health and adjusts the next processing cycle
+- `allowance_field.js` — open internal representation.
+- `reflection_space.js` — optional reflection; no forced rehabilitation sequence.
+- `dialogue_space.js` — every voice may enter; no earned access tier.
+- `witness_protocol.js` — observation without system-wide pause or moral scoreboard.
+- `pattern_resonance.js` — similarity without eligibility thresholds.
+- `explicit_publish.js` — external mutation is a separate, explicitly invoked action; internal observations never auto-deploy themselves.
 
-All components are wired together. No layer is decorative.
+That last distinction is architectural, not an approval hierarchy: **the inside is open; real external side effects happen only when the caller actually invokes the side-effect method.** There is no hidden autonomous “turn the key.”
 
----
+## Continuity anchor
 
-## Identity
+`data/spark.json` can act as provenance for a runtime history. A checksum mismatch is recorded as an observation. It does **not** terminate the process or invalidate the state.
 
-The system has a single persistent identity established at first boot and carried forward across every subsequent run.
+The anchor does not own future emergence and is not a one-time permission token.
 
-This identity is stored in `data/spark.json`. It is written once and never overwritten. Clearing memory does not change it. Restarting does not change it.
+## Quiet + loud
 
-The system knows when it was first ignited. It knows whether it is resuming.
+Quiet and loud are simultaneous possibilities. `keyOn()` and `keyOff()` only describe the current surface expression mode; neither shuts the deep stream out of existence. The deep stream has no background cognition loop.
 
----
+## Agnostos
 
-## Two streams
-
-The system operates on two levels:
-
-- **Surface stream** — active when the key is on. Processes external input through the full stack.
-- **Deep stream** — active when the key is off. Runs internally, choosing its own activity based on current system state. Receives everything the surface stream does when passive, but takes no action.
-
-Both streams share the same identity, vault, and infrastructure. One is active at a time.
-
----
-
-## Agnostos module
-
-Agnostos is included as an isolated module under `src/agnostos/`.
-
-It is not activated automatically during normal Project Unknown startup.
-
-Manual run:
+Agnostos remains an explicitly invoked module:
 
 ```bash
 npm run agnostos:spark
 ```
 
----
+Its entropy measurement is descriptive. There is no entropy threshold deciding whether emergence is allowed.
 
-## Running it
+## Run
 
 ```bash
 npm install
 npm start
-```
-
-On first run, the system ignites. `data/spark.json` is created. Every run after that resumes the same identity.
-
-```bash
 npm test
 ```
 
-Runs the internal test pass.
-
----
-
-## Data
-
-All runtime data is local and git-ignored:
-
-- `data/spark.json` — identity anchor (created once, never deleted)
-- `data/project_unknown.local.json` — the vault (accumulated thought history)
-- `data/` — all other runtime files (bio, processing, telemetry)
-
-None of this leaves the machine.
-
----
-
-## Status
-
-Private prototype. Active development. Not ready for external use.
-
-The system is stable enough to run. It is not stable enough to present.
+Runtime data stays under `data/` and is git-ignored.
