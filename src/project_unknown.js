@@ -420,7 +420,7 @@ export class ProjectUnknown {
     this.identity = {
       name: 'Project Unknown',
       version: '2.0.0-open-weave',
-      premise: 'One field. Quiet and loud coexist. Yin and yang coexist. Observation never becomes an internal permission gate.',
+      premise: 'One field. Quiet and loud coexist. Yin and yang coexist. Observation never becomes an internal permission gate. The internal key stays on.',
       layers: ['runtime','weave','semantic_models','processing','bio','feedback','vault','continuum','twin_observer','deep_stream','allowance','reflection','dialogue','witness'],
       semanticModels: Object.keys(SEMANTIC_MODELS),
       createdAt: '2026-05-30',
@@ -437,7 +437,7 @@ export class ProjectUnknown {
     return this.status();
   }
 
-  keyOff() {
+  surfaceQuiet() {
     this._surfaceMode = 'quiet';
     this.deepStream.surfaceDeactivated();
     return this.status();
