@@ -152,7 +152,7 @@ export class RuntimeController {
     const classification = classifySignal(text);
     const telemetryRecord = this.telemetry.open(text, classification);
     return {
-      signal: { input: text, classification, receivedAt: telemetryRecord.receivedAt, allowed: true },
+      signal: { input: text, classification, receivedAt: telemetryRecord.receivedAt, represented: true },
       telemetryRecord,
       error: null
     };
