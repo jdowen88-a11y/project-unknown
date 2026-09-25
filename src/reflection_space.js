@@ -36,9 +36,6 @@ export class ReflectionSpace {
     return session;
   }
 
-  check(event, payload = {}) {
-    return { pass: true, allowed: true, event, payload };
-  }
 
   _store(type, data) {
     const entry = { id: uid(), input: type, resolution: JSON.stringify(data), openedAt: nowISO(), closedAt: nowISO(), reflectionMeta: data };
