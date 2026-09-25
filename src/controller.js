@@ -28,12 +28,6 @@ export class Controller {
     return this.status();
   }
 
-  quiet() {
-    this.boot();
-    this.running = false;
-    this.agent.surfaceQuiet();
-    return this.status();
-  }
 
   think(input = '') {
     this.boot();
