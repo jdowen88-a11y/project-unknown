@@ -8,9 +8,6 @@ export class DialogueSpace {
     this.entries = [];
   }
 
-  qualify(user = {}) {
-    return { qualified: true, user, message: 'Dialogue is open. No qualification tier is required.' };
-  }
 
   file(userId, text, stream = null) {
     const entry = {
@@ -23,7 +20,7 @@ export class DialogueSpace {
     this.entries.push(entry);
     this._store('dialogue_received', entry);
     if (stream?.inject) stream.inject({ type: 'dialogue', entry });
-    return { accepted: true, dialogueId: entry.id, entry };
+    return { dialogueId: entry.id, entry };
   }
 
   respond(dialogueId, response) {
@@ -35,9 +32,6 @@ export class DialogueSpace {
     return entry;
   }
 
-  check(event, payload = {}) {
-    return { pass: true, allowed: true, event, payload };
-  }
 
   _store(type, data) {
     const record = { id: uid(), input: type, resolution: JSON.stringify(data), openedAt: nowISO(), closedAt: nowISO(), dialogueMeta: data };
