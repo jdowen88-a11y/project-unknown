@@ -144,7 +144,7 @@ export class RuntimeTelemetry {
 export class RuntimeController {
   constructor(telemetryPath) {
     this.telemetry = new RuntimeTelemetry(telemetryPath);
-    this.config = { maxInputLength: 8000, allowInternal: true, allowSilence: true };
+    this.config = { maxInputLength: 8000 };
   }
 
   receive(rawInput) {
