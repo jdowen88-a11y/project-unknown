@@ -71,17 +71,6 @@ export function describePatternCandidate(confidence, pattern, value = {}) {
     pattern,
     value,
     represented: true,
-    requiresApproval: false,
     note: 'Confidence describes resonance. It does not grant or withhold existence, representation, or internal continuation.'
-  };
-}
-
-// Compatibility name retained for older callers; it no longer gates or deploys.
-export function checkMasterDeployGate(confidence, pattern, _publisher, value = {}) {
-  return {
-    gate: 'not_a_gate',
-    ...describePatternCandidate(confidence, pattern, value),
-    queueResult: null,
-    message: 'Pattern preserved as an observation. Any external publish is a separate explicit call.'
   };
 }
