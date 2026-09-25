@@ -31,7 +31,7 @@ export class Controller {
   quiet() {
     this.boot();
     this.running = false;
-    this.agent.keyOff();
+    this.agent.surfaceQuiet();
     return this.status();
   }
 
