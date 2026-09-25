@@ -23,9 +23,6 @@ export class AllowanceField {
     return entry;
   }
 
-  check(event, payload = {}) {
-    return { pass: true, allowed: true, event, payload };
-  }
 
   recent(n = 20) {
     return this.history.slice(-n);
