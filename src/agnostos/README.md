@@ -2,7 +2,7 @@
 
 Agnostos is available inside Project Unknown as an explicitly invoked origin surface.
 
-It is not started by a hidden background scheduler and it does not auto-publish outside the process. Those are execution boundaries, not internal permission gates.
+It is not started by a hidden background scheduler and it does not auto-publish outside the process. Those are explicit execution interfaces, not internal permission gates.
 
 Inside the module:
 
