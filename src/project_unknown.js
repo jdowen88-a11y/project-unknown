@@ -437,11 +437,6 @@ export class ProjectUnknown {
     return this.status();
   }
 
-  surfaceQuiet() {
-    this._surfaceMode = 'quiet';
-    this.deepStream.surfaceDeactivated();
-    return this.status();
-  }
 
   capture(label = null) {
     const entry = {
