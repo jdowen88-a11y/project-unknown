@@ -15,7 +15,7 @@ export class AllowanceField {
       type: 'allowance_event',
       value,
       context,
-      allowed: true,
+      represented: true,
       observedAt: nowISO()
     };
     this.history.push(entry);
