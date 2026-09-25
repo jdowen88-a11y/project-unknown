@@ -33,7 +33,7 @@ Measurements are descriptive. They may compare, weight, correlate, retrieve and 
 - `pattern_resonance.js` — similarity without eligibility thresholds.
 - `explicit_publish.js` — external mutation is a separate, explicitly invoked action; internal observations never auto-deploy themselves.
 
-That last distinction is architectural, not an approval hierarchy: **the inside is open; real external side effects happen only when the caller actually invokes the side-effect method.** There is no hidden autonomous “turn the key.”
+That last distinction is architectural, not an approval hierarchy: **the inside is open and the internal key stays on. Real external side effects happen only when the caller actually invokes the side-effect method.**
 
 ## Continuity anchor
 
@@ -43,7 +43,7 @@ The anchor does not own future emergence and is not a one-time permission token.
 
 ## Quiet + loud
 
-Quiet and loud are simultaneous possibilities. `keyOn()` and `keyOff()` only describe the current surface expression mode; neither shuts the deep stream out of existence. The deep stream has no background cognition loop.
+Quiet and loud are simultaneous possibilities. `keyOn()` keeps the internal field open; `surfaceQuiet()` changes only the current surface expression mode. The key stays on, quiet mode does not erase the deep stream, and the deep stream has no hidden background scheduler.
 
 ## Agnostos
 
