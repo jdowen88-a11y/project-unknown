@@ -49,15 +49,21 @@ assert("loop tensionScore = 1 with empty vault", loop.tensionScore === 1);
 
 console.log("\n── ProjectUnknown Engine ──");
 const agent = new ProjectUnknown({ filePath: null });
+// The legacy engine deliberately creates one immutable spark anchor before
+// any user thinking. Count surface thoughts relative to this baseline,
+// rather than pretending that the anchor did not exist.
+const baselineVaultLoops = agent.vault.summary().totalLoops;
+assert("spark anchor preserved before any thought", baselineVaultLoops >= 1 &&
+  agent.vault.loops.some(item => item.isAnchor && item.sparkId === agent.spark.id));
 const result = agent.think("the vault is the intelligence and it grows forever");
 assert("think() returns agentSignal", !!result.agentSignal);
 assert("think() returns vaultEntry", !!result.vaultEntry && !!result.vaultEntry.id);
-assert("think() returns vault summary", result.vault.totalLoops === 1, `reported=${result.vault.totalLoops}, stored=${agent.vault.loops.length}`);
+assert("think() appends one thought after immutable anchor", result.vault.totalLoops === baselineVaultLoops + 1, `reported=${result.vault.totalLoops}, baseline=${baselineVaultLoops}`);
 assert("dominantLayer is a valid model", Object.keys(SEMANTIC_MODELS).includes(result.vaultEntry.dominantLayer));
 assert("meaningScore is 0-1", result.vaultEntry.meaningScore >= 0 && result.vaultEntry.meaningScore <= 1);
 
 const result2 = agent.think("the vault grows with every thought that enters it");
-assert("second think() increments vault", result2.vault.totalLoops === 2, `reported=${result2.vault.totalLoops}, stored=${agent.vault.loops.length}`);
+assert("second think() appends another thought without losing anchor", result2.vault.totalLoops === baselineVaultLoops + 2, `reported=${result2.vault.totalLoops}, baseline=${baselineVaultLoops}`);
 assert("second think() finds vault resonance", result2.retrieved.length > 0);
 
 console.log(`\n── Results: ${passed} passed, ${failed} failed ──\n`);
