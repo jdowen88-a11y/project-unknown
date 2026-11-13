@@ -91,6 +91,15 @@ export class Probe {
       ? roundN(meaningGrowth)
       : 0;
 
+    // Compute signal strength before composing the finding and its summary.
+    // Referencing finding inside its own initializer caused a ReferenceError.
+    const signalStrength = roundN(clampN(
+      Math.abs(meaningGrowth) * 0.4 +
+      Math.abs(depthShift)    * 0.2 +
+      resolvedPressure        * 0.25 +
+      growthFromSeed          * 0.15
+    ));
+
     // The probe's finding: what it observed from its vantage
     const finding = {
       probeId: this.id,
@@ -105,19 +114,14 @@ export class Probe {
       resolvedPressure,
       growthFromSeed,
       // Signal strength: how significant was this probe's perspective?
-      signalStrength: roundN(clampN(
-        Math.abs(meaningGrowth) * 0.4 +
-        Math.abs(depthShift)    * 0.2 +
-        resolvedPressure        * 0.25 +
-        growthFromSeed          * 0.15
-      )),
+      signalStrength,
       summary: [
         `Probe from loop ${this.parentLoopId.slice(-8)}.`,
         `Vantage: ${vantage.dominantModel || "unknown"} at depth ${vantage.corticalDepth}.`,
         `Meaning growth since close: ${meaningGrowth > 0 ? "+" : ""}${meaningGrowth}.`,
         resolvedPressure > 0 ? `Resolved pressure: ${resolvedPressure}.` : null,
         growthFromSeed > 0   ? `Growth seeded here: ${growthFromSeed}.`  : null,
-        `Signal strength: ${finding?.signalStrength ?? "?"}. `
+        `Signal strength: ${signalStrength}.`
       ].filter(Boolean).join(" ")
     };
 

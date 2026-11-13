@@ -1,0 +1,18 @@
+name: project-unknown offline tests
+on:
+  push:
+    branches: [fix/integrated-tests-20261113]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Read-only unit tests (local temporary state only)
+        run: npm test
