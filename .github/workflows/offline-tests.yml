@@ -1,7 +1,7 @@
 name: project-unknown offline tests
 on:
   push:
-    branches: [fix/integrated-tests-20261113]
+    branches: [main, fix/integrated-tests-20261113]
   pull_request:
   workflow_dispatch:
 permissions:
