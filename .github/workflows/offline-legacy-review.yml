@@ -1,0 +1,29 @@
+name: Project Unknown legacy refactor review (offline)
+on:
+  push:
+    branches: [refactor-identity-streams-v2]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  legacy-compatibility:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check new and modified modules
+        run: |
+          node --check src/cli.js
+          node --check src/deep_stream.js
+          node --check src/stream.js
+          node --check src/synthesis.js
+          node --check src/identity/boundary_shell.js
+          node --check src/identity/first_contact.js
+          node --check src/semantics/current_names.js
+          node --check src/senses/presence_aperture.js
+          node --check src/streams/dream_cycle.js
+      - name: Run existing Node tests without networking or dependencies
+        run: npm test
