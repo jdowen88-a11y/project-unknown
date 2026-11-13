@@ -220,10 +220,12 @@ export class StreamPipeline {
       yin
     );
 
-    // ── Step 4: Return the current to the agent
-    //    This is all the agent receives.
-    //    The river speaks. Not the tributaries.
-    return current;
+    // ── Step 4: Compatibility bridge during migration.
+    // The existing ProjectUnknown.think() and ThoughtLoop.resolve() still
+    // consume unified, modelOutputs and growthSignal. Do not silently break
+    // that contract. The new synthesis current is additive until callers
+    // are migrated and covered by regression tests.
+    return { modelOutputs, unified, growthSignal, current };
   }
 
   // Internal diagnostics — available for logging/debugging, never for the agent
